@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -25,6 +25,6 @@ async def get_worker(worker_id: str, db: AsyncSession = Depends(get_db)):
     worker = result.scalar_one_or_none()
 
     if not worker:
-        return {"error": f"Worker {worker_id} not found"}
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
 
     return worker
