@@ -6,10 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.config import get_settings
-from core.database import init_db, close_db
+from core.database import init_db, close_db, async_session_maker
 from core.redis_client import RedisClient
 from api.routes import jobs, workers, metrics
+from api.routes import chaos as chaos_routes
+from api.routes.chaos import set_chaos_runner
 from api import websocket as ws_api
+from chaos.runner import ChaosRunner
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -58,6 +61,12 @@ async def lifespan(app: FastAPI):
         logger.info("Database initialized")
         await ws_api.start_background_tasks()
         logger.info("WebSocket pub/sub listener started")
+        runner = ChaosRunner(
+            redis_client=RedisClient.get_connection(),
+            db_session_factory=async_session_maker,
+        )
+        set_chaos_runner(runner)
+        logger.info("ChaosRunner initialised")
         yield
     finally:
         logger.info("Shutting down coordinator...")
@@ -87,6 +96,7 @@ app.include_router(jobs.router)
 app.include_router(workers.router)
 app.include_router(metrics.router)
 app.include_router(ws_api.router)
+app.include_router(chaos_routes.router)
 
 
 @app.get("/health")
