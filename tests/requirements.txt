@@ -1,0 +1,6 @@
+pytest>=7.4
+pytest-asyncio>=0.23
+pytest-cov>=4.1
+httpx>=0.25
+fakeredis>=2.20
+aiosqlite>=0.19
