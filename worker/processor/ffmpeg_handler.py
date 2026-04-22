@@ -43,12 +43,18 @@ class FFmpegHandler:
 
         cmd = [
             "ffmpeg",
-            "-i", input_path,
-            "-c:v", "libx264",
-            "-crf", crf,
-            "-c:a", "aac",
-            "-progress", "pipe:1",
-            "-loglevel", "error",
+            "-i",
+            input_path,
+            "-c:v",
+            "libx264",
+            "-crf",
+            crf,
+            "-c:a",
+            "aac",
+            "-progress",
+            "pipe:1",
+            "-loglevel",
+            "error",
             output_path,
         ]
 
@@ -91,12 +97,17 @@ class FFmpegHandler:
 
         cmd = [
             "ffmpeg",
-            "-i", input_path,
+            "-i",
+            input_path,
             "-vn",
-            "-acodec", "libmp3lame",
-            "-ab", "192k",
-            "-progress", "pipe:1",
-            "-loglevel", "error",
+            "-acodec",
+            "libmp3lame",
+            "-ab",
+            "192k",
+            "-progress",
+            "pipe:1",
+            "-loglevel",
+            "error",
             output_path,
         ]
 
@@ -139,11 +150,16 @@ class FFmpegHandler:
 
         cmd = [
             "ffmpeg",
-            "-ss", str(timestamp),
-            "-i", input_path,
-            "-vframes", "1",
-            "-q:v", "2",
-            "-loglevel", "error",
+            "-ss",
+            str(timestamp),
+            "-i",
+            input_path,
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
+            "-loglevel",
+            "error",
             output_path,
         ]
 

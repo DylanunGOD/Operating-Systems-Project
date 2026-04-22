@@ -2,7 +2,6 @@ import json
 import logging
 import signal
 import time
-from typing import Optional
 
 from core.config import get_settings
 from core.redis_client import RedisClient

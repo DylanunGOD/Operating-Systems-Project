@@ -24,7 +24,7 @@ settings = get_settings()
 async def create_job(
     job_create: JobCreate,
     db: AsyncSession = Depends(get_db),
-    redis = Depends(get_redis),
+    redis=Depends(get_redis),
 ):
     """Create a new job and enqueue it"""
     job = Job(

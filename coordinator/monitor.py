@@ -1,2 +1,2 @@
 def monitor_resources() -> dict[str, str]:
-    return {'monitor': 'pending implementation'}
+    return {"monitor": "pending implementation"}

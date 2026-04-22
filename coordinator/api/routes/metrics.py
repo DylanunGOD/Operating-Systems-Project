@@ -15,7 +15,7 @@ settings = get_settings()
 @router.get("", response_model=MetricsResponse)
 async def get_metrics(
     db: AsyncSession = Depends(get_db),
-    redis = Depends(get_redis),
+    redis=Depends(get_redis),
 ):
     """Get system metrics and statistics"""
     try:
