@@ -7,6 +7,7 @@ from enum import Enum
 
 class JobType(str, Enum):
     """Job types"""
+
     convert_video = "convert_video"
     extract_audio = "extract_audio"
     thumbnail = "thumbnail"
@@ -14,6 +15,7 @@ class JobType(str, Enum):
 
 class JobStatus(str, Enum):
     """Job status"""
+
     pending = "pending"
     queued = "queued"
     processing = "processing"
@@ -23,6 +25,7 @@ class JobStatus(str, Enum):
 
 class JobCreate(BaseModel):
     """Request schema for creating a new job"""
+
     type: JobType
     input_path: str
     params: Optional[Dict[str, Any]] = Field(default_factory=dict)
@@ -30,6 +33,7 @@ class JobCreate(BaseModel):
 
 class JobUpdate(BaseModel):
     """Request schema for updating a job"""
+
     status: Optional[JobStatus] = None
     progress: Optional[int] = None
     worker_id: Optional[str] = None
@@ -38,6 +42,7 @@ class JobUpdate(BaseModel):
 
 class JobResponse(BaseModel):
     """Response schema for job details"""
+
     id: UUID
     type: JobType
     status: JobStatus
@@ -58,12 +63,14 @@ class JobResponse(BaseModel):
 
 class JobListResponse(BaseModel):
     """Response schema for job list"""
+
     total: int
     jobs: list[JobResponse]
 
 
 class WorkerResponse(BaseModel):
     """Response schema for worker status"""
+
     id: str
     status: str
     current_job: Optional[UUID] = None
@@ -78,11 +85,13 @@ class WorkerResponse(BaseModel):
 
 class WorkerListResponse(BaseModel):
     """Response schema for worker list"""
+
     workers: list[WorkerResponse]
 
 
 class MetricsResponse(BaseModel):
     """Response schema for system metrics"""
+
     queue_length: int
     jobs_total: int
     jobs_completed: int
@@ -96,6 +105,7 @@ class MetricsResponse(BaseModel):
 
 class EventResponse(BaseModel):
     """Response schema for event details"""
+
     id: int
     job_id: Optional[UUID] = None
     worker_id: Optional[str] = None

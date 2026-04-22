@@ -1,6 +1,5 @@
 import json
 import logging
-from uuid import UUID
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.job import Job, JobStatus

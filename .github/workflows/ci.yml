@@ -57,7 +57,7 @@ jobs:
         run: |
           pip install -r coordinator/requirements.txt
           pip install -r worker/requirements.txt
-          pip install pytest pytest-asyncio pytest-cov
+          pip install pytest pytest-asyncio pytest-cov httpx fakeredis aiosqlite
       - name: Run tests
         run: pytest tests/ -v --cov=coordinator --cov=worker
         env:

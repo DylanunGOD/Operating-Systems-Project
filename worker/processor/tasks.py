@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Optional, Dict, Any
+from typing import Dict, Any
 from .ffmpeg_handler import FFmpegHandler
 from .reporter import ProgressReporter
 

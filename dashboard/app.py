@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 
-app = FastAPI(title='Dashboard Backend')
+app = FastAPI(title="Dashboard Backend")
 
 
-@app.get('/status')
+@app.get("/status")
 def status() -> dict[str, str]:
-    return {'dashboard': 'running'}
+    return {"dashboard": "running"}

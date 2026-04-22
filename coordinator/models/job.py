@@ -8,6 +8,7 @@ from core.database import Base
 
 class JobType(str, enum.Enum):
     """Job types supported by the system"""
+
     convert_video = "convert_video"
     extract_audio = "extract_audio"
     thumbnail = "thumbnail"
@@ -15,6 +16,7 @@ class JobType(str, enum.Enum):
 
 class JobStatus(str, enum.Enum):
     """Job status states"""
+
     pending = "pending"
     queued = "queued"
     processing = "processing"
@@ -24,6 +26,7 @@ class JobStatus(str, enum.Enum):
 
 class Job(Base):
     """Job model for multimedia processing tasks"""
+
     __tablename__ = "jobs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -49,6 +52,7 @@ class Job(Base):
 
 class Worker(Base):
     """Worker model for tracking worker status"""
+
     __tablename__ = "workers"
 
     id = Column(String, primary_key=True)
@@ -68,6 +72,7 @@ class Worker(Base):
 
 class Event(Base):
     """Event log for audit trail and monitoring"""
+
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True)
@@ -78,7 +83,4 @@ class Event(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return (
-            f"<Event(id={self.id}, job={self.job_id}, "
-            f"type={self.event_type})>"
-        )
+        return f"<Event(id={self.id}, job={self.job_id}, " f"type={self.event_type})>"
