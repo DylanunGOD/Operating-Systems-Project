@@ -1,7 +1,9 @@
 import logging
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.config import get_settings
 from core.database import init_db, close_db
@@ -13,6 +15,38 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+
+class MetricsMiddleware(BaseHTTPMiddleware):
+    """Middleware to instrument HTTP requests with Prometheus metrics."""
+
+    async def dispatch(self, request: Request, call_next):
+        # Skip instrumenting the /metrics endpoint itself
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
+        method = request.method
+        path = request.url.path
+        start_time = time.perf_counter()
+
+        response = await call_next(request)
+
+        duration = time.perf_counter() - start_time
+        status_code = response.status_code
+
+        # Record metrics
+        metrics.coordinator_requests_total.labels(
+            method=method,
+            path=path,
+            status_code=status_code,
+        ).inc()
+
+        metrics.coordinator_request_duration_seconds.labels(
+            method=method,
+            path=path,
+        ).observe(duration)
+
+        return response
 
 
 @asynccontextmanager
@@ -40,6 +74,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(MetricsMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
