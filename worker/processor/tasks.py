@@ -1,7 +1,9 @@
 import logging
+import time
 from typing import Dict, Any
 from .ffmpeg_handler import FFmpegHandler
 from .reporter import ProgressReporter
+from metrics import worker_jobs_processed_total, worker_job_duration_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -147,20 +149,47 @@ class TaskProcessor:
         """Execute task by type"""
         self.reporter.report_started(job_id, worker_id)
 
-        if job_type == "convert_video":
-            return self.process_convert_video(
-                job_id, worker_id, input_path, output_path, params
-            )
-        elif job_type == "extract_audio":
-            return self.process_extract_audio(
-                job_id, worker_id, input_path, output_path, params
-            )
-        elif job_type == "thumbnail":
-            return self.process_thumbnail(
-                job_id, worker_id, input_path, output_path, params
-            )
-        else:
-            error = f"Unknown job type: {job_type}"
-            self.reporter.report_failed(job_id, worker_id, error)
-            logger.error(error)
-            return False
+        start_time = time.perf_counter()
+        success = False
+
+        try:
+            if job_type == "convert_video":
+                success = self.process_convert_video(
+                    job_id, worker_id, input_path, output_path, params
+                )
+            elif job_type == "extract_audio":
+                success = self.process_extract_audio(
+                    job_id, worker_id, input_path, output_path, params
+                )
+            elif job_type == "thumbnail":
+                success = self.process_thumbnail(
+                    job_id, worker_id, input_path, output_path, params
+                )
+            else:
+                error = f"Unknown job type: {job_type}"
+                self.reporter.report_failed(job_id, worker_id, error)
+                logger.error(error)
+                success = False
+
+            # Record duration
+            duration = time.perf_counter() - start_time
+            worker_job_duration_seconds.labels(job_type=job_type).observe(duration)
+
+            # Record job completion status
+            status = "success" if success else "failed"
+            worker_jobs_processed_total.labels(
+                job_type=job_type,
+                status=status,
+            ).inc()
+
+            return success
+
+        except Exception:
+            # Record failure
+            duration = time.perf_counter() - start_time
+            worker_job_duration_seconds.labels(job_type=job_type).observe(duration)
+            worker_jobs_processed_total.labels(
+                job_type=job_type,
+                status="failed",
+            ).inc()
+            raise

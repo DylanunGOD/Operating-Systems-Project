@@ -2,12 +2,14 @@ import json
 import logging
 import signal
 import time
+from prometheus_client import start_http_server
 
 from core.config import get_settings
 from core.redis_client import RedisClient
 from processor.ffmpeg_handler import FFmpegHandler
 from processor.reporter import ProgressReporter
 from processor.tasks import TaskProcessor
+from metrics import worker_heartbeat_timestamp, worker_active
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -71,17 +73,27 @@ def main():
     logger.info(f"Worker {settings.worker_id} started")
     logger.info(f"Listening to queue: {settings.redis_queue_key}")
 
+    # Start Prometheus metrics HTTP server
+    logger.info(f"Starting metrics server on port {settings.metrics_port}")
+    start_http_server(settings.metrics_port)
+
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
     while running:
         try:
+            # Update heartbeat
+            worker_heartbeat_timestamp.set(time.time())
+
             job_data = redis_client.blpop(
                 settings.redis_queue_key,
                 timeout=5,
             )
 
             if job_data:
+                # Mark worker as active
+                worker_active.set(1)
+
                 queue_name, job_json = job_data
                 success = process_job(job_json)
 
@@ -90,8 +102,15 @@ def main():
                 else:
                     logger.warning("Job processing failed")
 
+                # Mark worker as idle
+                worker_active.set(0)
+            else:
+                # Idle - set active to 0
+                worker_active.set(0)
+
         except Exception as e:
             logger.error(f"Error in worker loop: {e}")
+            worker_active.set(0)
             time.sleep(1)
 
     logger.info(f"Worker {settings.worker_id} stopped")

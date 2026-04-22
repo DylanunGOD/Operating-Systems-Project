@@ -318,15 +318,11 @@ async def test_metrics_empty_state(async_client):
     """GET /metrics returns all zero counts when DB and queue are empty."""
     r = await async_client.get("/metrics")
     assert r.status_code == 200
-    data = r.json()
-    assert data["queue_length"] == 0
-    assert data["jobs_total"] == 0
-    assert data["jobs_completed"] == 0
-    assert data["jobs_failed"] == 0
-    assert data["jobs_processing"] == 0
-    assert data["workers_online"] == 0
-    assert data["workers_idle"] == 0
-    assert data["workers_busy"] == 0
+    text = r.text
+    # Check Prometheus text format with zero values
+    assert "coordinator_queue_depth 0" in text
+    assert 'coordinator_workers_total{status="online"} 0' in text
+    assert 'coordinator_workers_total{status="busy"} 0' in text
 
 
 async def test_metrics_queue_length(async_client, redis_mock):
@@ -334,7 +330,8 @@ async def test_metrics_queue_length(async_client, redis_mock):
     redis_mock.rpush("jobs:queue", "job1", "job2", "job3")
     r = await async_client.get("/metrics")
     assert r.status_code == 200
-    assert r.json()["queue_length"] == 3
+    text = r.text
+    assert "coordinator_queue_depth 3" in text
 
 
 async def test_metrics_job_counts_by_status(async_client, sample_job_factory):
@@ -347,11 +344,12 @@ async def test_metrics_job_counts_by_status(async_client, sample_job_factory):
 
     r = await async_client.get("/metrics")
     assert r.status_code == 200
-    data = r.json()
-    assert data["jobs_total"] == 5
-    assert data["jobs_completed"] == 2
-    assert data["jobs_failed"] == 1
-    assert data["jobs_processing"] == 1
+    text = r.text
+    # Check for the Prometheus metrics with proper label values
+    assert 'coordinator_jobs_total{status="completed"} 2' in text
+    assert 'coordinator_jobs_total{status="failed"} 1' in text
+    assert 'coordinator_jobs_total{status="processing"} 1' in text
+    assert 'coordinator_jobs_total{status="pending"} 1' in text
 
 
 async def test_metrics_workers_online_idle_busy(async_client, db_session):
@@ -370,10 +368,10 @@ async def test_metrics_workers_online_idle_busy(async_client, db_session):
 
     r = await async_client.get("/metrics")
     assert r.status_code == 200
-    data = r.json()
-    assert data["workers_online"] == 3
-    assert data["workers_idle"] == 2
-    assert data["workers_busy"] == 1
+    text = r.text
+    # Check Prometheus format for worker metrics
+    assert 'coordinator_workers_total{status="online"} 3' in text
+    assert 'coordinator_workers_total{status="busy"} 1' in text
 
 
 # ---------------------------------------------------------------------------

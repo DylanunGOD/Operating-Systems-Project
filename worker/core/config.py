@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Worker settings
     worker_heartbeat_interval: int = 5
     worker_max_retries: int = 3
+    metrics_port: int = 9100
 
     # Storage
     media_input_dir: str = "/media/input"
