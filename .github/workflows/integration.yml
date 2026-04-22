@@ -1,0 +1,59 @@
+name: Integration Tests (manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: pip install pytest httpx
+
+      - name: Build coordinator and worker images
+        run: docker compose build coordinator worker-1
+
+      - name: Start stack
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.test.yml \
+            up -d
+
+      - name: Wait for coordinator to be healthy
+        timeout-minutes: 2
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health; then
+              echo "Coordinator is healthy"
+              exit 0
+            fi
+            echo "Attempt $i/30 — waiting 2 s…"
+            sleep 2
+          done
+          echo "Coordinator did not become healthy in time" >&2
+          docker compose logs coordinator
+          exit 1
+
+      - name: Run integration tests
+        run: RUN_INTEGRATION_TESTS=1 pytest tests/test_integration.py -v
+        env:
+          COORDINATOR_URL: http://localhost:8000
+
+      - name: Teardown stack
+        if: always()
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.test.yml \
+            down -v
