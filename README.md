@@ -179,8 +179,11 @@ pytest tests/ -q
 pytest tests/ --cov=coordinator --cov=worker --cov-report=term-missing
 ```
 
-84 unit tests total (63 coordinator, 21 worker). Integration tests (`tests/test_integration.py`)
-require a live Docker stack and are a work in progress.
+84 unit tests total (63 coordinator, 21 worker). Integration tests live in
+[tests/test_integration.py](tests/test_integration.py) and are opt-in: they require a live
+docker-compose stack and run only when `RUN_INTEGRATION_TESTS=1` is set. See
+[tests/integration/README.md](tests/integration/README.md) for run instructions, or trigger the
+`integration` workflow manually from the Actions tab.
 
 ### Lint
 
