@@ -1,280 +1,298 @@
 # multimedia-distributed
 
-Plataforma distribuida de procesamiento multimedia que distribuye la carga de trabajo entre multiples nodos coordinados, permitiendo procesar cientos de archivos de video y audio en paralelo con monitoreo en tiempo real y resiliencia ante fallos.
+A distributed multimedia processing platform that distributes workload across multiple
+coordinated nodes, processing hundreds of video and audio files in parallel with real-time
+monitoring and fault tolerance.
 
-Proyecto academico desarrollado en el contexto de Sistemas Operativos. Demuestra conceptos de procesos concurrentes, colas de tareas, planificacion, comunicacion entre procesos y sistemas distribuidos.
-
----
-
-## Descripcion
-
-El sistema procesa archivos multimedia mediante tres operaciones principales: conversion de formato, extraccion de audio y generacion de miniaturas. En lugar de ejecutar estas operaciones de forma secuencial en una sola maquina, distribuye el trabajo entre multiples workers que consumen una cola compartida, reduciendo el tiempo total de procesamiento de forma proporcional al numero de nodos activos.
-
-Una instancia con tres workers procesa 600 archivos aproximadamente tres veces mas rapido que una sola maquina.
+Academic project developed in the context of Operating Systems. Demonstrates concurrent
+processes, task queues, scheduling, inter-process communication, and distributed systems
+using FastAPI, Redis, PostgreSQL, Docker, Prometheus, and Grafana.
 
 ---
 
-## Arquitectura
-
-El sistema se divide en tres capas:
-
-**Entrada.** El cliente envia trabajos a la API REST del coordinador. Cada trabajo especifica el tipo de operacion, la ruta del archivo de entrada y parametros opcionales como formato de salida o calidad.
-
-**Orquestacion.** El coordinador (FastAPI) recibe los trabajos, los persiste en PostgreSQL y los encola en Redis. Expone un endpoint WebSocket que transmite actualizaciones de progreso a los clientes conectados.
-
-**Ejecucion.** Los workers consumen la cola mediante `BLPOP` (operacion bloqueante de Redis), ejecutan `ffmpeg` en background, y publican el progreso cada segundo. Si un worker falla durante el procesamiento, el trabajo vuelve automaticamente a la cola para ser retomado por otro nodo.
+## Architecture
 
 ```
-Cliente  ->  Coordinador (FastAPI)  ->  Redis (cola)  ->  Worker 1
-                                    ->  PostgreSQL         Worker 2
-                                    ->  WebSocket /ws      Worker 3
+                 ┌──────────────────────────────────────────────────┐
+                 │                  backend network                  │
+                 │                                                   │
+  Client CLI ──► │  Coordinator (FastAPI :8000)                      │
+                 │    ├── REST API (/jobs, /workers, /metrics)       │
+                 │    ├── WebSocket /ws  (fanout to dashboard)       │
+                 │    ├── Chaos runner   (/chaos/*)                  │
+                 │    └── Prometheus metrics (/metrics)              │
+                 │          │               │                        │
+                 │       Redis :6379     PostgreSQL :5432            │
+                 │    jobs:queue (LIST)   jobs / workers / events    │
+                 │    jobs:progress (pub/sub)                        │
+                 │          │                                        │
+                 │  Worker-1 Worker-2 Worker-3  (BLPOP loop)        │
+                 │    └── ffmpeg subprocess                          │
+                 │    └── Prometheus :9100                           │
+                 └──────────────────────────────────────────────────┘
+                          │                       │
+              ┌──────────────────┐   ┌────────────────────────┐
+              │ frontend network  │   │    monitoring network  │
+              │  Dashboard :3000  │   │  Prometheus  :9090     │
+              │  (React + Vite)   │   │  Grafana     :3001     │
+              └──────────────────┘   │  Loki        :3100     │
+                                     └────────────────────────┘
 ```
 
 ---
 
-## Tecnologias
+## Stack
 
-| Componente        | Tecnologia         | Version |
-|-------------------|--------------------|---------|
-| API del coordinador | FastAPI + Uvicorn | 0.111+  |
-| ORM               | SQLAlchemy async   | 2.0     |
-| Cola distribuida  | Redis              | 7.x     |
-| Persistencia      | PostgreSQL         | 15      |
-| Procesamiento     | ffmpeg             | 6.x     |
-| Contenedores      | Docker + Compose   | 24+     |
-| Logs              | Loki + Promtail    | 2.9     |
-| Metricas          | Prometheus         | 2.x     |
-| Visualizacion     | Grafana            | 10.x    |
-| Dashboard         | React + Vite       | 18 / 5  |
-
----
-
-## Requisitos
-
-- Docker Desktop 24 o superior
-- Docker Compose v2
-- Python 3.11+ (solo para el cliente CLI y los tests)
-- 4 GB de RAM disponibles para el stack completo
-- ffmpeg instalado localmente (opcional, solo para generar archivos de prueba)
+| Component       | Technology              | Purpose                                    |
+|-----------------|-------------------------|--------------------------------------------|
+| Coordinator     | FastAPI + Uvicorn       | REST API, job queue management, WebSocket  |
+| ORM             | SQLAlchemy async 2.0    | Async DB access compatible with FastAPI    |
+| Queue           | Redis 7 (LIST + pub/sub)| Distributed task queue and progress events |
+| Database        | PostgreSQL 15           | Persistent job, worker and event records   |
+| Workers         | Python + ffmpeg         | Video conversion, audio extraction, thumbs |
+| Dashboard       | React 18 + Vite 5       | Browser UI polling the coordinator API     |
+| Client CLI      | Python + httpx          | Batch job submission and test file gen     |
+| Metrics         | Prometheus + Grafana    | Time-series metrics and dashboards         |
+| Logs            | Loki + Promtail         | Structured log aggregation                 |
+| CI              | GitHub Actions          | Lint (ruff+black), test, Docker build      |
 
 ---
 
-## Instalacion
+## Quick Start
 
-### 1. Clonar el repositorio
+**Prerequisites:** Docker Desktop 24+, Docker Compose v2, 8 GB RAM available.
 
 ```bash
-git clone https://github.com/tu-usuario/multimedia-distributed.git
-cd multimedia-distributed
-```
+# 1. Clone
+git clone https://github.com/DylanunGOD/Operating-Systems-Project.git
+cd Operating-Systems-Project
 
-### 2. Configurar variables de entorno
-
-```bash
+# 2. Configure environment (defaults work for local dev)
 cp .env.example .env
+
+# 3. Build and start all services
+docker compose up -d --build
 ```
 
-El archivo `.env` funciona sin modificaciones para entornos locales. Ajustar `POSTGRES_PASSWORD` y credenciales de Grafana si se despliega en un servidor compartido.
-
-### 3. Levantar el stack completo
+Wait ~60 s for services to become healthy, then verify:
 
 ```bash
-docker-compose up --build
-```
-
-Esto inicia los siguientes servicios: PostgreSQL, Redis, el coordinador, tres workers, el dashboard, Prometheus, Grafana y Loki.
-
-La primera vez puede tardar varios minutos mientras se descargan las imagenes base y se instalan dependencias.
-
-### 4. Verificar que todo funciona
-
-```bash
-# Estado de los contenedores
-docker-compose ps
-
-# API del coordinador
+# Health check
 curl http://localhost:8000/health
 
-# Dashboard
-# Abrir http://localhost:3000 en el navegador
-
-# Grafana
-# Abrir http://localhost:3000 (usuario: admin, contrasena: admin)
-```
-
----
-
-## Uso
-
-### Enviar un trabajo individual
-
-```bash
+# Submit a test job
 curl -X POST http://localhost:8000/jobs \
   -H "Content-Type: application/json" \
-  -d '{
-    "type": "convert_video",
-    "input_path": "/media/input/video.mov",
-    "params": {"format": "mp4", "quality": "high"}
-  }'
+  -d '{"type":"thumbnail","input_path":"/media/input/test.mp4","params":{}}'
+
+# List jobs
+curl http://localhost:8000/jobs
 ```
 
-Tipos de trabajo disponibles: `convert_video`, `extract_audio`, `thumbnail`.
-
-### Enviar trabajos en lote
-
-```bash
-# Generar archivos de prueba (requiere ffmpeg local)
-python client/generate_test_files.py --count 50 --duration 10
-
-# Enviar todos los archivos de un directorio
-python client/submit_jobs.py --dir ./test_files --type convert_video
-```
-
-### Consultar el estado de un trabajo
-
-```bash
-curl http://localhost:8000/jobs/{id}
-```
-
-### Ver todos los trabajos activos
-
-```bash
-curl http://localhost:8000/jobs?status=processing
-```
+| URL                          | What                          |
+|------------------------------|-------------------------------|
+| http://localhost:8000/docs   | Interactive API (Swagger UI)  |
+| http://localhost:3000        | React dashboard               |
+| http://localhost:3001        | Grafana (admin / admin)       |
+| http://localhost:9090        | Prometheus                    |
 
 ---
 
-## API Reference
-
-| Metodo | Ruta                  | Descripcion                             |
-|--------|-----------------------|-----------------------------------------|
-| POST   | `/jobs`               | Crear un nuevo trabajo                  |
-| GET    | `/jobs`               | Listar trabajos (filtros: status, worker_id) |
-| GET    | `/jobs/{id}`          | Detalle de un trabajo                   |
-| DELETE | `/jobs/{id}`          | Cancelar un trabajo pendiente           |
-| GET    | `/workers`            | Estado actual de todos los workers      |
-| GET    | `/metrics`            | Throughput, longitud de cola y recursos |
-| POST   | `/chaos/{scenario}`   | Ejecutar un escenario de chaos          |
-| WS     | `/ws`                 | Stream de eventos en tiempo real        |
-
-La documentacion interactiva (Swagger UI) esta disponible en `http://localhost:8000/docs`.
-
----
-
-## Escalar workers
-
-Agregar un cuarto worker no requiere cambios en el codigo. En `docker-compose.yml`, duplicar la definicion de cualquier worker con un nombre distinto:
-
-```yaml
-worker-4:
-  build: ./worker
-  hostname: worker-4
-  env_file: .env
-  volumes:
-    - media_volume:/media
-  depends_on:
-    - redis
-    - postgres
-```
-
-El coordinador detecta el nuevo nodo automaticamente en el siguiente heartbeat.
-
----
-
-## Chaos Engineering
-
-El modulo de chaos engineering permite verificar que el sistema se recupera ante fallos reales. Los escenarios disponibles son:
-
-- `redis_crash` - Detiene Redis por 10 segundos y verifica que los workers se reconectan
-- `worker_kill` - Mata worker-2 abruptamente durante un trabajo activo
-- `network_latency` - Agrega 500ms de latencia entre el coordinador y PostgreSQL
-- `disk_full` - Llena el volumen de salida para verificar el manejo de errores de disco
-- `cascading_failure` - Secuencia de fallos: worker-1 cae, latencia en Redis, worker-2 cae
-- `total_outage` - Detiene coordinador y Redis simultaneamente
-
-Ejecutar un escenario:
-
-```bash
-curl -X POST http://localhost:8000/chaos/worker_kill
-```
-
-Cada evento de chaos queda registrado en PostgreSQL y aparece marcado en los graficos de Grafana.
-
----
-
-## Observabilidad
-
-**Dashboard (React):** `http://localhost:3000`
-Muestra el estado de cada trabajo, los recursos de cada worker (CPU y RAM), el historial de eventos y un stream de logs en vivo. Se actualiza cada segundo via WebSocket sin recargar la pagina.
-
-**Grafana:** `http://localhost:4000`
-Contiene un dashboard preconfigurado con graficos de throughput, longitud de la cola, tasa de fallos y uso de recursos por nodo. Los eventos de chaos aparecen como lineas verticales.
-
-**Loki:** accesible desde el panel Explore de Grafana.
-Permite buscar logs por `job_id`, `worker_id` o nivel de severidad. Ejemplo de query:
+## Directory Layout
 
 ```
-{job="worker-1"} | json | job_id="550e8400-e29b-41d4-a716-446655440000"
-```
-
-**Prometheus:** `http://localhost:9090`
-Metricas exportadas: `jobs_total`, `jobs_failed_total`, `processing_duration_seconds`, `queue_length`.
-
----
-
-## Tests
-
-```bash
-# Instalar dependencias de desarrollo
-pip install -r requirements-dev.txt
-
-# Correr todos los tests
-pytest tests/ -v
-
-# Con reporte de cobertura
-pytest tests/ --cov=coordinator --cov=worker --cov-report=term-missing
-
-# Solo tests de integracion (requiere Docker)
-pytest tests/test_integration.py -v
-```
-
-Los tests de integracion levantan un stack de prueba con `docker-compose -f docker-compose.test.yml`, envian trabajos reales y verifican los resultados en PostgreSQL.
-
----
-
-## Estructura del proyecto
-
-```
-multimedia-distributed/
-├── coordinator/          API FastAPI (coordinador)
-├── worker/               Servicio worker (replicable)
-├── dashboard/            Frontend React
-├── chaos/                Modulo de chaos engineering
-├── client/               CLI para enviar trabajos
+.
+├── coordinator/        FastAPI app — REST API, WebSocket, metrics, chaos runner
+├── worker/             Worker service — BLPOP loop, ffmpeg handler, Prometheus :9100
+├── dashboard/          React + Vite frontend (polling; WebSocket hook exists but unused)
+├── client/             CLI tools: submit_jobs.py and generate_test_files.py
+├── chaos/              Shared chaos scenario definitions (also used by coordinator)
+├── tests/              Unit tests (84 total: 63 coordinator, 21 worker)
 ├── infra/
-│   ├── postgres/         Schema SQL inicial
-│   ├── redis/            Configuracion de Redis
-│   ├── grafana/          Dashboards y datasources
-│   └── prometheus/       Configuracion de scraping
-├── tests/                Suite de tests
-├── docker-compose.yml    Orquestacion principal
-├── .env.example          Plantilla de variables de entorno
-└── MASTER_PLAN.md        Plan de desarrollo por fases
+│   ├── postgres/       init.sql — DDL for jobs, workers, events tables
+│   ├── redis/          redis.conf
+│   ├── grafana/        Provisioned datasources and main.json dashboard
+│   └── prometheus/     prometheus.yml — scrape config for coordinator and workers
+├── docker-compose.yml  Full stack: 11 services
+├── .env.example        Environment variable template
+└── pytest.ini          Test configuration
 ```
 
 ---
 
-## Conceptos de Sistemas Operativos demostrados
+## API Endpoints
 
-- **Procesos concurrentes:** multiples workers ejecutan ffmpeg en paralelo mediante `asyncio` y `subprocess`
-- **Colas de tareas:** Redis como estructura de scheduling distribuido con operaciones atomicas
-- **Planificacion:** asignacion dinamica de trabajos al primer worker disponible via `BLPOP`
-- **Comunicacion entre procesos:** REST API, WebSocket y pub/sub de Redis entre componentes
-- **Monitoreo de recursos:** CPU, memoria y throughput por nodo via `psutil` y Prometheus
-- **Sistemas distribuidos:** coordinacion, resiliencia y consistencia eventual entre nodos independientes
+### Jobs
+
+| Method   | Path              | Description                                        |
+|----------|-------------------|----------------------------------------------------|
+| `POST`   | `/jobs`           | Create a job (`type`, `input_path`, `params`)      |
+| `GET`    | `/jobs`           | List jobs (query: `status`, `worker_id`, `limit`)  |
+| `GET`    | `/jobs/{id}`      | Get job detail                                     |
+| `PATCH`  | `/jobs/{id}`      | Update job (`status`, `progress`, `error_msg`, …)  |
+| `DELETE` | `/jobs/{id}`      | Cancel a pending job                               |
+
+### Workers / Metrics / System
+
+| Method   | Path              | Description                                        |
+|----------|-------------------|----------------------------------------------------|
+| `GET`    | `/workers`        | List all workers with status and resource usage    |
+| `GET`    | `/workers/{id}`   | Get a single worker                                |
+| `GET`    | `/metrics`        | Prometheus text format metrics                     |
+| `GET`    | `/health`         | `{"status":"healthy"}`                             |
+
+### Chaos
+
+| Method   | Path                    | Description                                  |
+|----------|-------------------------|----------------------------------------------|
+| `GET`    | `/chaos/scenarios`      | List available preset scenarios              |
+| `POST`   | `/chaos/runs`           | Start a scenario (`{"scenario_id": "..."}`)  |
+| `GET`    | `/chaos/runs`           | List all runs (active + historical)          |
+| `GET`    | `/chaos/runs/{run_id}`  | Get run status                               |
+| `DELETE` | `/chaos/runs/{run_id}`  | Cancel a running scenario                    |
+
+### WebSocket
+
+| Protocol | Path | Description                                             |
+|----------|------|---------------------------------------------------------|
+| `WS`     | `/ws` | Real-time event stream (job progress + queue snapshots) |
+
+**Note:** The old README listed `POST /chaos/{scenario}` — the actual API is
+`POST /chaos/runs` with a JSON body. The old docs also listed 6 scenario IDs; the actual
+presets are 4: `worker_overload`, `redis_outage`, `cascading_failures`, `slow_network`.
 
 ---
 
-## Licencia
+## Development
+
+### Running tests
+
+```bash
+# Install test dependencies
+pip install -r coordinator/requirements.txt -r worker/requirements.txt
+pip install pytest pytest-asyncio fakeredis httpx
+
+# Run all unit tests
+pytest tests/ -q
+
+# With coverage
+pytest tests/ --cov=coordinator --cov=worker --cov-report=term-missing
+```
+
+84 unit tests total (63 coordinator, 21 worker). Integration tests live in
+[tests/test_integration.py](tests/test_integration.py) and are opt-in: they require a live
+docker-compose stack and run only when `RUN_INTEGRATION_TESTS=1` is set. See
+[tests/integration/README.md](tests/integration/README.md) for run instructions, or trigger the
+`integration` workflow manually from the Actions tab.
+
+### Lint
+
+```bash
+black . && ruff check .
+```
+
+CI runs lint, tests (with postgres + redis services), and `docker build` on every push to
+`main` or `develop`.
+
+### Local setup without Docker
+
+```bash
+# Start only the infrastructure
+docker compose up -d postgres redis
+
+# Run coordinator
+cd coordinator && pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Run a worker in another terminal
+cd worker && pip install -r requirements.txt
+WORKER_ID=worker-local python main.py
+```
+
+---
+
+## Observability
+
+### Grafana (http://localhost:3001, admin/admin)
+
+The `infra/grafana/dashboards/main.json` dashboard is provisioned automatically with 5 panels:
+
+| Panel                      | Type       | What it shows                              |
+|----------------------------|------------|--------------------------------------------|
+| Queue Depth                | timeseries | `coordinator_queue_depth` over time        |
+| Jobs by Status             | timeseries | `coordinator_jobs_total` by status label   |
+| Worker Jobs Processed Rate | timeseries | `worker_jobs_processed_total` rate         |
+| Request Latency p95        | timeseries | `coordinator_request_duration_seconds`     |
+| Container Logs             | logs       | Loki log stream from all containers        |
+
+### Prometheus (http://localhost:9090)
+
+Coordinator metrics scraped from `:8000/metrics`:
+
+- `coordinator_jobs_total{status}` — job count by status
+- `coordinator_workers_total{status}` — worker count by status (online/busy)
+- `coordinator_queue_depth` — current Redis queue length
+- `coordinator_requests_total{method,path,status_code}` — HTTP request counter
+- `coordinator_request_duration_seconds{method,path}` — request latency histogram
+
+Worker metrics scraped from each worker's `:9100/metrics`:
+
+- `worker_jobs_processed_total{job_type,status}` — jobs processed counter
+- `worker_job_duration_seconds{job_type}` — processing time histogram
+- `worker_heartbeat_timestamp` — last heartbeat Unix timestamp
+- `worker_active` — 1 if processing, 0 if idle
+
+### Loki
+
+Access via Grafana Explore. Example LogQL query:
+
+```
+{container="worker-1"} | json
+```
+
+---
+
+## Running the Demo
+
+See [DEMO.md](DEMO.md) for the full step-by-step demonstration script.
+
+---
+
+## Troubleshooting
+
+**Port already in use (8000, 3000, 3001, 9090)**
+Another process is using those ports. Find and stop it, or edit the host-side port
+mappings in `docker-compose.yml`.
+
+**Dashboard shows no data / workers not registered**
+Workers register in PostgreSQL only after they pick up their first job. Submit at least
+one job and wait a few seconds before checking `/workers`.
+
+**ffmpeg not found when generating test files**
+`generate_test_files.py` requires `ffmpeg` installed locally on your PATH (not inside
+Docker). Install it with `brew install ffmpeg` (macOS) or `apt install ffmpeg` (Debian/Ubuntu).
+
+**First `docker compose up --build` is slow**
+The coordinator and worker images pull Python 3.11-slim and install dependencies from
+scratch. Subsequent builds use the layer cache and are much faster.
+
+---
+
+## Operating Systems Concepts Demonstrated
+
+- **Concurrent processes:** multiple workers execute ffmpeg in parallel via `asyncio` and `subprocess`
+- **Task queues:** Redis as a distributed scheduling structure with atomic BLPOP
+- **Scheduling:** dynamic job assignment to the first available worker via BLPOP
+- **IPC:** REST API, WebSocket, and Redis pub/sub between independent components
+- **Resource monitoring:** CPU, memory, and throughput per node via `psutil` and Prometheus
+- **Fault tolerance:** worker crash recovery, reconnection logic, error injection via chaos scenarios
+
+---
+
+## License
 
 MIT
+
+## Contributing
+
+Open a PR against `main`. Run `black . && ruff check .` and `pytest tests/ -q` before pushing.
