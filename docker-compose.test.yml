@@ -1,0 +1,51 @@
+version: '3.9'
+
+services:
+  postgres:
+    container_name: postgres_test
+    environment:
+      POSTGRES_DB: multimedia_db_test
+
+  redis:
+    container_name: redis_test
+
+  coordinator:
+    container_name: coordinator_test
+    environment:
+      POSTGRES_DB: multimedia_db_test
+      DEBUG: 'true'
+      LOG_LEVEL: debug
+
+  worker-1:
+    container_name: worker_test_1
+    environment:
+      WORKER_ID: worker_test_1
+      LOG_LEVEL: debug
+
+  worker-2:
+    profiles:
+      - donotstart
+
+  worker-3:
+    profiles:
+      - donotstart
+
+  dashboard:
+    profiles:
+      - donotstart
+
+  prometheus:
+    profiles:
+      - donotstart
+
+  grafana:
+    profiles:
+      - donotstart
+
+  loki:
+    profiles:
+      - donotstart
+
+  promtail:
+    profiles:
+      - donotstart
