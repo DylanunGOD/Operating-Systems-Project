@@ -103,7 +103,11 @@ async def _pubsub_listener() -> None:
                 if data is None:
                     continue
                 try:
-                    parsed = json.loads(data) if isinstance(data, str) else json.loads(data.decode())
+                    parsed = (
+                        json.loads(data)
+                        if isinstance(data, str)
+                        else json.loads(data.decode())
+                    )
                 except (ValueError, AttributeError) as exc:
                     logger.warning("Invalid pubsub payload dropped: %s", exc)
                     continue
@@ -115,8 +119,11 @@ async def _pubsub_listener() -> None:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error("Pub/sub listener error: %s; reconnecting in %ds",
-                         exc, PUBSUB_RECONNECT_DELAY_SECONDS)
+            logger.error(
+                "Pub/sub listener error: %s; reconnecting in %ds",
+                exc,
+                PUBSUB_RECONNECT_DELAY_SECONDS,
+            )
             await asyncio.sleep(PUBSUB_RECONNECT_DELAY_SECONDS)
         finally:
             if pubsub is not None:
@@ -179,7 +186,9 @@ async def start_background_tasks() -> None:
     if _background_tasks:
         return
     loop = asyncio.get_running_loop()
-    _background_tasks.append(loop.create_task(_pubsub_listener(), name="ws-pubsub-listener"))
+    _background_tasks.append(
+        loop.create_task(_pubsub_listener(), name="ws-pubsub-listener")
+    )
     _background_tasks.append(loop.create_task(_heartbeat_loop(), name="ws-heartbeat"))
 
 
