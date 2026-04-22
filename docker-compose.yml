@@ -1,0 +1,35 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: queue_redis
+    ports:
+      - '6379:6379'
+
+  coordinator:
+    build: ./coordinator
+    container_name: coordinator
+    depends_on:
+      - redis
+
+  worker:
+    build: ./worker
+    container_name: worker
+    depends_on:
+      - redis
+
+  client:
+    build: ./client
+    container_name: client
+    depends_on:
+      - coordinator
+
+  dashboard:
+    build: ./dashboard
+    container_name: dashboard
+    depends_on:
+      - coordinator
+      - worker
+
+volumes: {}
