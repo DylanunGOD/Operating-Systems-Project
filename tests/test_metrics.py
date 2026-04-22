@@ -5,8 +5,6 @@ import sys
 sys.path.insert(0, "coordinator")
 
 
-
-
 async def test_metrics_returns_200_with_text_plain(async_client):
     """GET /metrics returns 200 OK with text/plain content-type."""
     response = await async_client.get("/metrics")
