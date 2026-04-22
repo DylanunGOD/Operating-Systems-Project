@@ -5,7 +5,6 @@ import sys
 import uuid
 
 import fakeredis
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, "coordinator")
