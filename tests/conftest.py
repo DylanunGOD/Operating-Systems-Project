@@ -1,4 +1,5 @@
 """Shared fixtures for coordinator unit tests."""
+
 import sys
 import uuid
 import pytest
@@ -12,8 +13,7 @@ sys.path.insert(0, "coordinator")
 from main import app
 from core.database import get_db, Base
 from core.redis_client import get_redis
-from models.job import Job, Worker, JobStatus, JobType
-
+from models.job import Job, JobStatus, JobType
 
 # ---------------------------------------------------------------------------
 # Event loop + asyncio_mode are configured via pytest.ini / pyproject.toml.

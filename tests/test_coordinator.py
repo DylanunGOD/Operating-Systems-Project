@@ -1,4 +1,5 @@
 """Unit tests for the coordinator service."""
+
 import json
 import sys
 import uuid
@@ -11,7 +12,6 @@ sys.path.insert(0, "coordinator")
 
 from core.scheduler import JobScheduler
 from models.job import Job, JobStatus, JobType, Worker
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -163,9 +163,7 @@ async def test_get_job_invalid_uuid(async_client):
 async def test_patch_job_updates_status(async_client, sample_job_factory):
     """PATCH /jobs/{id} can update the job status."""
     job = await sample_job_factory(status="pending")
-    r = await async_client.patch(
-        f"/jobs/{job.id}", json={"status": "processing"}
-    )
+    r = await async_client.patch(f"/jobs/{job.id}", json={"status": "processing"})
     assert r.status_code == 200
     assert r.json()["status"] == "processing"
 
@@ -192,9 +190,7 @@ async def test_patch_job_updates_error_msg(async_client, sample_job_factory):
 
 async def test_patch_job_not_found(async_client):
     """PATCH /jobs/{id} returns 404 when job does not exist."""
-    r = await async_client.patch(
-        f"/jobs/{uuid.uuid4()}", json={"status": "processing"}
-    )
+    r = await async_client.patch(f"/jobs/{uuid.uuid4()}", json={"status": "processing"})
     assert r.status_code == 404
 
 
@@ -221,7 +217,9 @@ async def test_delete_pending_job_succeeds(async_client, sample_job_factory):
     assert "deleted" in r.json()["detail"].lower()
 
 
-async def test_delete_pending_job_removes_from_db(async_client, sample_job_factory, db_session):
+async def test_delete_pending_job_removes_from_db(
+    async_client, sample_job_factory, db_session
+):
     """After DELETE, the job record is gone from the database."""
     from sqlalchemy import select
 
@@ -267,8 +265,12 @@ async def test_list_workers_returns_all(async_client, db_session):
     """GET /workers returns all registered workers."""
     from datetime import datetime, timezone
 
-    w1 = Worker(id="worker-1", status="idle", jobs_done=0, last_seen=datetime.now(timezone.utc))
-    w2 = Worker(id="worker-2", status="busy", jobs_done=3, last_seen=datetime.now(timezone.utc))
+    w1 = Worker(
+        id="worker-1", status="idle", jobs_done=0, last_seen=datetime.now(timezone.utc)
+    )
+    w2 = Worker(
+        id="worker-2", status="busy", jobs_done=3, last_seen=datetime.now(timezone.utc)
+    )
     db_session.add_all([w1, w2])
     await db_session.commit()
 
@@ -289,7 +291,9 @@ async def test_get_worker_existing(async_client, db_session):
     """GET /workers/{id} returns worker details for a known worker."""
     from datetime import datetime, timezone
 
-    w = Worker(id="w-abc", status="idle", jobs_done=5, last_seen=datetime.now(timezone.utc))
+    w = Worker(
+        id="w-abc", status="idle", jobs_done=5, last_seen=datetime.now(timezone.utc)
+    )
     db_session.add(w)
     await db_session.commit()
 
@@ -359,11 +363,13 @@ async def test_metrics_workers_online_idle_busy(async_client, db_session):
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
-    db_session.add_all([
-        Worker(id="m-w1", status="idle", jobs_done=0, last_seen=now),
-        Worker(id="m-w2", status="idle", jobs_done=0, last_seen=now),
-        Worker(id="m-w3", status="busy", jobs_done=1, last_seen=now),
-    ])
+    db_session.add_all(
+        [
+            Worker(id="m-w1", status="idle", jobs_done=0, last_seen=now),
+            Worker(id="m-w2", status="idle", jobs_done=0, last_seen=now),
+            Worker(id="m-w3", status="busy", jobs_done=1, last_seen=now),
+        ]
+    )
     await db_session.commit()
 
     r = await async_client.get("/metrics")
