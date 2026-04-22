@@ -5,7 +5,6 @@ import sys
 import uuid
 
 import fakeredis
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, "coordinator")
@@ -304,13 +303,10 @@ async def test_get_worker_existing(async_client, db_session):
 
 
 async def test_get_worker_missing(async_client):
-    """GET /workers/{id} for unknown worker raises ResponseValidationError (code bug)."""
-    from fastapi.exceptions import ResponseValidationError
-
-    # workers.py returns {"error": "..."} which is incompatible with WorkerResponse schema;
-    # FastAPI raises ResponseValidationError before any HTTP response is sent.
-    with pytest.raises(ResponseValidationError):
-        await async_client.get("/workers/no-such-worker")
+    """GET /workers/{id} for unknown worker returns 404."""
+    r = await async_client.get("/workers/no-such-worker")
+    assert r.status_code == 404
+    assert "not found" in r.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
