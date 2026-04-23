@@ -109,10 +109,7 @@ Expected output:
 
 ```bash
 # Submit all 30 files as convert_video jobs (10 concurrent by default)
-python client/submit_jobs.py \
-  --dir ./test_files \
-  --type convert_video \
-  --concurrency 10
+python client/submit_jobs.py --dir ./test_files --type convert_video --concurrency 10
 ```
 
 Expected output:
@@ -128,21 +125,17 @@ Failed       : 0
 Elapsed      : 2.45s
 ```
 
-You can also submit a single job via curl:
 
-```bash
-curl -X POST http://localhost:8000/jobs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "thumbnail",
-    "input_path": "/media/input/test_001.mp4",
-    "params": {"output_path": "/media/output/thumb_001.jpg"}
-  }'
-```
+
+
 
 ---
 
 ## 5. Watch Processing in the Dashboard
+
+
+First you go into the dashboard folder with cd dashboard
+then you run the dashboard npm run dev
 
 Open http://localhost:3000.
 
@@ -221,9 +214,8 @@ python client/submit_jobs.py --dir ./test_files --type thumbnail --concurrency 5
 Then trigger the chaos scenario:
 
 ```bash
-curl -X POST http://localhost:8000/chaos/runs \
-  -H "Content-Type: application/json" \
-  -d '{"scenario_id": "worker_overload"}'
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/chaos/runs -ContentType 'application/json' -Body '{"scenario_id": "worker_overload"}'
+
 ```
 
 Expected response:
@@ -253,7 +245,7 @@ curl -X POST http://localhost:8000/chaos/runs \
 
 Watch **Jobs by Status** in Grafana — the `failed` line rises sharply.
 
-### Cancel a running scenario
+### Cancel a running scenario  **RECORDAR AÑADIR EL RUN ID**
 
 ```bash
 curl -X DELETE http://localhost:8000/chaos/runs/<run_id>

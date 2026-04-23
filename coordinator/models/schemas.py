@@ -89,6 +89,23 @@ class WorkerListResponse(BaseModel):
     workers: list[WorkerResponse]
 
 
+class WorkerRegisterRequest(BaseModel):
+    """Request schema for worker registration"""
+
+    id: str
+    status: str = "idle"
+
+
+class WorkerHeartbeatRequest(BaseModel):
+    """Request schema for worker heartbeat"""
+
+    status: Optional[str] = None
+    current_job: Optional[UUID] = None
+    cpu_percent: Optional[int] = None
+    mem_percent: Optional[int] = None
+    jobs_done: Optional[int] = None
+
+
 class MetricsResponse(BaseModel):
     """Response schema for system metrics"""
 

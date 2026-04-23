@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     worker_max_retries: int = 3
     metrics_port: int = 9100
 
+    # Coordinator HTTP API (for registration / heartbeat)
+    coordinator_host: str = "coordinator"
+    coordinator_port: int = 8000
+
+    @property
+    def coordinator_url(self) -> str:
+        return f"http://{self.coordinator_host}:{self.coordinator_port}"
+
     # Storage
     media_input_dir: str = "/media/input"
     media_output_dir: str = "/media/output"

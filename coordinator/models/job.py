@@ -30,8 +30,12 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    type = Column(Enum(JobType), nullable=False)
-    status = Column(Enum(JobStatus), nullable=False, default=JobStatus.pending)
+    type = Column(Enum(JobType, name="job_type", create_type=False), nullable=False)
+    status = Column(
+        Enum(JobStatus, name="job_status", create_type=False),
+        nullable=False,
+        default=JobStatus.pending,
+    )
     input_path = Column(String, nullable=False)
     output_path = Column(String)
     params = Column(JSON, default={})

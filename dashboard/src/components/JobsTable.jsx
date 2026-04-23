@@ -1,31 +1,15 @@
-import { useState, useEffect } from 'react'
-import { jobsAPI } from '../api'
+import { useMemo, useState } from 'react'
+import { useJobs } from '../store/RealtimeContext'
 import styles from './JobsTable.module.css'
 
 export function JobsTable() {
-  const [jobs, setJobs] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const { jobs, initialized } = useJobs()
   const [statusFilter, setStatusFilter] = useState('')
 
-  useEffect(() => {
-    fetchJobs()
-    const interval = setInterval(fetchJobs, 2000)
-    return () => clearInterval(interval)
-  }, [statusFilter])
-
-  const fetchJobs = async () => {
-    try {
-      setLoading(true)
-      const response = await jobsAPI.getJobs(statusFilter || undefined)
-      setJobs(response.data.jobs || [])
-      setError(null)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const visibleJobs = useMemo(() => {
+    if (!statusFilter) return jobs
+    return jobs.filter((job) => job.status === statusFilter)
+  }, [jobs, statusFilter])
 
   const getStatusBadgeClass = (status) => {
     return `badge badge-${
@@ -41,12 +25,15 @@ export function JobsTable() {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-'
-    return new Date(dateString).toLocaleString()
+    const d = new Date(dateString)
+    if (Number.isNaN(d.getTime())) return '-'
+    return d.toLocaleString()
   }
 
-  const formatBytes = (bytes) => {
-    if (!bytes) return '-'
-    return (bytes / 1024 / 1024).toFixed(2) + ' MB'
+  const formatJobId = (id) => {
+    if (!id) return '-'
+    const s = String(id)
+    return s.length > 8 ? `${s.substring(0, 8)}...` : s
   }
 
   return (
@@ -67,14 +54,13 @@ export function JobsTable() {
         </select>
       </div>
 
-      {loading && <div className={styles.loading}>Cargando...</div>}
-      {error && <div className={styles.error}>Error: {error}</div>}
+      {!initialized && <div className={styles.loading}>Cargando...</div>}
 
-      {!loading && jobs.length === 0 && (
+      {initialized && visibleJobs.length === 0 && (
         <div className={styles.empty}>No hay jobs para mostrar</div>
       )}
 
-      {!loading && jobs.length > 0 && (
+      {initialized && visibleJobs.length > 0 && (
         <div className={styles.tableWrapper}>
           <table>
             <thead>
@@ -88,25 +74,23 @@ export function JobsTable() {
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job) => (
+              {visibleJobs.map((job) => (
                 <tr key={job.id}>
-                  <td className={styles.jobId}>
-                    {job.id.substring(0, 8)}...
-                  </td>
-                  <td>{job.type}</td>
+                  <td className={styles.jobId}>{formatJobId(job.id)}</td>
+                  <td>{job.type || '-'}</td>
                   <td>
                     <span className={getStatusBadgeClass(job.status)}>
-                      {job.status}
+                      {job.status || '-'}
                     </span>
                   </td>
                   <td>
                     <div className={styles.progressBar}>
                       <div
                         className={styles.progressFill}
-                        style={{ width: `${job.progress}%` }}
+                        style={{ width: `${job.progress || 0}%` }}
                       />
                       <span className={styles.progressText}>
-                        {job.progress}%
+                        {job.progress || 0}%
                       </span>
                     </div>
                   </td>

@@ -15,9 +15,44 @@ from models.schemas import (
     JobListResponse,
     JobUpdate,
 )
+from pathlib import PurePosixPath
+from uuid import uuid4
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 settings = get_settings()
+
+
+_DEFAULT_OUTPUT_DIR = "/media/output"
+_OUTPUT_EXT_BY_TYPE = {
+    "convert_video": "mp4",
+    "extract_audio": "mp3",
+    "thumbnail": "jpg",
+}
+
+
+def _normalize_input_path(raw: str) -> str:
+    """Map a client-side path (possibly Windows-flavoured) to a container path
+    under /media/input so workers can read it."""
+    if not raw:
+        return raw
+    if raw.startswith("/media/"):
+        return raw
+    basename = PurePosixPath(raw.replace("\\", "/")).name
+    return f"/media/input/{basename}"
+
+
+def _build_output_path(job_id, job_type: str, params: dict) -> str:
+    """Generate a default output path under /media/output."""
+    if isinstance(params, dict):
+        explicit = params.get("output_path")
+        if isinstance(explicit, str) and explicit:
+            return explicit
+    ext = _OUTPUT_EXT_BY_TYPE.get(job_type, "out")
+    if job_type == "convert_video" and isinstance(params, dict):
+        fmt = params.get("format")
+        if isinstance(fmt, str) and fmt:
+            ext = fmt
+    return f"{_DEFAULT_OUTPUT_DIR}/{job_id}.{ext}"
 
 
 @router.post("", response_model=JobResponse)
@@ -27,10 +62,19 @@ async def create_job(
     redis=Depends(get_redis),
 ):
     """Create a new job and enqueue it"""
+    params = dict(job_create.params or {})
+    params.pop("output_path", None)
+
+    job_id = uuid4()
+    normalized_input = _normalize_input_path(job_create.input_path)
+    output_path = _build_output_path(job_id, job_create.type.value, job_create.params or {})
+
     job = Job(
+        id=job_id,
         type=job_create.type,
-        input_path=job_create.input_path,
-        params=job_create.params,
+        input_path=normalized_input,
+        output_path=output_path,
+        params=params,
     )
 
     db.add(job)

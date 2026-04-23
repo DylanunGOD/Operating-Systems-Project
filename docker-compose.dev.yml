@@ -12,6 +12,8 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./coordinator:/app
+      - ./test_files:/media/input:ro
+      - ./media_output:/media/output
 
   worker-1:
     build:
@@ -19,6 +21,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./worker:/app
+      - ./test_files:/media/input:ro
+      - ./media_output:/media/output
 
   worker-2:
     build:
@@ -26,6 +30,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./worker:/app
+      - ./test_files:/media/input:ro
+      - ./media_output:/media/output
 
   worker-3:
     build:
@@ -33,6 +39,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./worker:/app
+      - ./test_files:/media/input:ro
+      - ./media_output:/media/output
 
   dashboard:
     build:

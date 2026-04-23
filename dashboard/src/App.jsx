@@ -1,23 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { JobsTable } from './components/JobsTable'
 import { WorkersStatus } from './components/WorkersStatus'
-import { metricsAPI } from './api'
+import { ChaosPanel } from './components/ChaosPanel'
+import {
+  useJobCounts,
+  useQueueSnapshot,
+  useRealtime,
+} from './store/RealtimeContext'
 import styles from './App.module.css'
 
 function App() {
-  const [metrics, setMetrics] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [isOnline, setIsOnline] = useState(true)
+  const queue = useQueueSnapshot()
+  const jobCounts = useJobCounts()
+  const { isConnected } = useRealtime()
+  const [isBrowserOnline, setIsBrowserOnline] = useState(
+    typeof navigator === 'undefined' ? true : navigator.onLine
+  )
 
   useEffect(() => {
-    fetchMetrics()
-    const interval = setInterval(fetchMetrics, 5000)
-    return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
+    const handleOnline = () => setIsBrowserOnline(true)
+    const handleOffline = () => setIsBrowserOnline(false)
 
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -28,19 +30,7 @@ function App() {
     }
   }, [])
 
-  const fetchMetrics = async () => {
-    try {
-      setLoading(true)
-      const response = await metricsAPI.getMetrics()
-      setMetrics(response.data)
-      setIsOnline(true)
-    } catch (error) {
-      console.error('Error fetching metrics:', error)
-      setIsOnline(false)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const online = isBrowserOnline && isConnected
 
   return (
     <div className={styles.app}>
@@ -52,62 +42,69 @@ function App() {
         <div className={styles.status}>
           <div
             className={`${styles.statusIndicator} ${
-              isOnline ? styles.online : styles.offline
+              online ? styles.online : styles.offline
             }`}
           />
-          <span>{isOnline ? 'En línea' : 'Sin conexión'}</span>
+          <span>
+            {!isBrowserOnline
+              ? 'Sin conexión'
+              : isConnected
+              ? 'En línea'
+              : 'Reconectando…'}
+          </span>
         </div>
       </header>
 
       <main className={styles.main}>
-        {metrics && (
-          <section className={styles.metricsBar}>
-            <div className={styles.metric}>
-              <span className={styles.label}>Cola</span>
-              <span className={styles.value}>{metrics.queue_length}</span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.label}>Total Jobs</span>
-              <span className={styles.value}>{metrics.jobs_total}</span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.label}>Completados</span>
-              <span className={`${styles.value} ${styles.success}`}>
-                {metrics.jobs_completed}
-              </span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.label}>Fallidos</span>
-              <span className={`${styles.value} ${styles.danger}`}>
-                {metrics.jobs_failed}
-              </span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.label}>Procesando</span>
-              <span className={`${styles.value} ${styles.primary}`}>
-                {metrics.jobs_processing}
-              </span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.label}>Workers</span>
-              <span className={styles.value}>{metrics.workers_online}</span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.label}>Idle</span>
-              <span className={`${styles.value} ${styles.success}`}>
-                {metrics.workers_idle}
-              </span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.label}>Busy</span>
-              <span className={`${styles.value} ${styles.warning}`}>
-                {metrics.workers_busy}
-              </span>
-            </div>
-          </section>
-        )}
+        <section className={styles.metricsBar}>
+          <div className={styles.metric}>
+            <span className={styles.label}>Cola</span>
+            <span className={styles.value}>{queue?.queue_length ?? '—'}</span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.label}>Total Jobs</span>
+            <span className={styles.value}>{jobCounts.total}</span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.label}>Completados</span>
+            <span className={`${styles.value} ${styles.success}`}>
+              {jobCounts.completed}
+            </span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.label}>Fallidos</span>
+            <span className={`${styles.value} ${styles.danger}`}>
+              {jobCounts.failed}
+            </span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.label}>Procesando</span>
+            <span className={`${styles.value} ${styles.primary}`}>
+              {jobCounts.processing}
+            </span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.label}>Workers</span>
+            <span className={styles.value}>
+              {queue?.workers_online ?? '—'}
+            </span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.label}>Idle</span>
+            <span className={`${styles.value} ${styles.success}`}>
+              {queue?.workers_idle ?? '—'}
+            </span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.label}>Busy</span>
+            <span className={`${styles.value} ${styles.warning}`}>
+              {queue?.workers_busy ?? '—'}
+            </span>
+          </div>
+        </section>
 
         <div className={styles.content}>
+          <ChaosPanel />
           <WorkersStatus />
           <JobsTable />
         </div>

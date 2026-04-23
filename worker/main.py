@@ -1,7 +1,12 @@
 import json
 import logging
 import signal
+import threading
 import time
+import urllib.error
+import urllib.request
+
+import psutil
 from prometheus_client import start_http_server
 
 from core.config import get_settings
@@ -25,6 +30,51 @@ task_processor = TaskProcessor(
 )
 
 running = True
+_jobs_done = 0
+_current_status = "idle"
+_current_job_id = None
+
+
+def _http_json(method: str, url: str, body: dict) -> None:
+    """Send a small JSON request to the coordinator, log on failure only."""
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            resp.read()
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+        logger.warning(f"Coordinator call {method} {url} failed: {exc}")
+
+
+def register_with_coordinator() -> None:
+    url = f"{settings.coordinator_url}/workers/register"
+    _http_json("POST", url, {"id": settings.worker_id, "status": "idle"})
+
+
+def send_heartbeat() -> None:
+    url = f"{settings.coordinator_url}/workers/{settings.worker_id}/heartbeat"
+    body = {
+        "status": _current_status,
+        "current_job": _current_job_id,
+        "cpu_percent": int(psutil.cpu_percent(interval=None)),
+        "mem_percent": int(psutil.virtual_memory().percent),
+        "jobs_done": _jobs_done,
+    }
+    _http_json("PUT", url, body)
+
+
+def heartbeat_loop() -> None:
+    while running:
+        try:
+            send_heartbeat()
+        except Exception as exc:
+            logger.warning(f"Heartbeat error: {exc}")
+        time.sleep(settings.worker_heartbeat_interval)
 
 
 def signal_handler(sig, frame):
@@ -70,6 +120,8 @@ def process_job(job_data: str) -> bool:
 
 def main():
     """Main worker loop - consumes jobs from Redis queue"""
+    global _jobs_done, _current_status, _current_job_id
+
     logger.info(f"Worker {settings.worker_id} started")
     logger.info(f"Listening to queue: {settings.redis_queue_key}")
 
@@ -79,6 +131,11 @@ def main():
 
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
+
+    # Register with coordinator and start heartbeat thread
+    register_with_coordinator()
+    hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+    hb_thread.start()
 
     while running:
         try:
@@ -93,6 +150,13 @@ def main():
             if job_data:
                 # Mark worker as active
                 worker_active.set(1)
+                _current_status = "busy"
+                try:
+                    parsed = json.loads(job_data[1])
+                    _current_job_id = parsed.get("id")
+                except Exception:
+                    _current_job_id = None
+                send_heartbeat()
 
                 queue_name, job_json = job_data
                 success = process_job(job_json)
@@ -102,15 +166,20 @@ def main():
                 else:
                     logger.warning("Job processing failed")
 
-                # Mark worker as idle
+                _jobs_done += 1
+                _current_job_id = None
+                _current_status = "idle"
                 worker_active.set(0)
+                send_heartbeat()
             else:
                 # Idle - set active to 0
                 worker_active.set(0)
+                _current_status = "idle"
 
         except Exception as e:
             logger.error(f"Error in worker loop: {e}")
             worker_active.set(0)
+            _current_status = "idle"
             time.sleep(1)
 
     logger.info(f"Worker {settings.worker_id} stopped")

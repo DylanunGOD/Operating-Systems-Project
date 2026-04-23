@@ -1,30 +1,8 @@
-import { useState, useEffect } from 'react'
-import { workersAPI } from '../api'
+import { useWorkers } from '../store/RealtimeContext'
 import styles from './WorkersStatus.module.css'
 
 export function WorkersStatus() {
-  const [workers, setWorkers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    fetchWorkers()
-    const interval = setInterval(fetchWorkers, 3000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const fetchWorkers = async () => {
-    try {
-      setLoading(true)
-      const response = await workersAPI.getWorkers()
-      setWorkers(response.data.workers || [])
-      setError(null)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { workers, initialized } = useWorkers()
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -52,14 +30,13 @@ export function WorkersStatus() {
     <div className={styles.container}>
       <h2>Workers</h2>
 
-      {loading && <div className={styles.loading}>Cargando...</div>}
-      {error && <div className={styles.error}>Error: {error}</div>}
+      {!initialized && <div className={styles.loading}>Cargando...</div>}
 
-      {!loading && workers.length === 0 && (
+      {initialized && workers.length === 0 && (
         <div className={styles.empty}>No hay workers conectados</div>
       )}
 
-      {!loading && workers.length > 0 && (
+      {initialized && workers.length > 0 && (
         <div className={styles.grid}>
           {workers.map((worker) => (
             <div key={worker.id} className={styles.card}>
@@ -86,10 +63,7 @@ export function WorkersStatus() {
                     <div
                       className={styles.meter}
                       style={{
-                        width: `${Math.min(
-                          worker.cpu_percent || 0,
-                          100
-                        )}%`,
+                        width: `${Math.min(worker.cpu_percent || 0, 100)}%`,
                         backgroundColor:
                           worker.cpu_percent > 80
                             ? '#ef4444'
@@ -110,10 +84,7 @@ export function WorkersStatus() {
                     <div
                       className={styles.meter}
                       style={{
-                        width: `${Math.min(
-                          worker.mem_percent || 0,
-                          100
-                        )}%`,
+                        width: `${Math.min(worker.mem_percent || 0, 100)}%`,
                         backgroundColor:
                           worker.mem_percent > 80
                             ? '#ef4444'
@@ -130,7 +101,7 @@ export function WorkersStatus() {
 
                 <div className={styles.detailRow}>
                   <span className={styles.label}>Jobs completados:</span>
-                  <span className={styles.value}>{worker.jobs_done}</span>
+                  <span className={styles.value}>{worker.jobs_done ?? 0}</span>
                 </div>
               </div>
             </div>
