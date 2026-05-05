@@ -20,6 +20,19 @@ class Settings(BaseSettings):
     redis_queue_key: str = "jobs:queue"
     redis_progress_channel: str = "jobs:progress"
 
+    @property
+    def priority_queue_keys(self) -> list[str]:
+        """Redis list keys ordered from highest to lowest priority.
+
+        Worker BLPOPs across all three; Redis returns the first non-empty key,
+        which gives us strict priority dispatch with a single round trip.
+        """
+        return [
+            f"{self.redis_queue_key}:high",
+            f"{self.redis_queue_key}:normal",
+            f"{self.redis_queue_key}:low",
+        ]
+
     # Worker settings
     worker_heartbeat_interval: int = 5
     worker_max_retries: int = 3

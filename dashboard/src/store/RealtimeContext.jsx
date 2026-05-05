@@ -80,10 +80,22 @@ function realtimeReducer(state, action) {
     }
 
     case 'ws/queue_snapshot': {
-      const { queue_length, workers_online, workers_idle, workers_busy } = action.event
+      const {
+        queue_length,
+        queue_by_priority,
+        workers_online,
+        workers_idle,
+        workers_busy,
+      } = action.event
       return {
         ...state,
-        queueSnapshot: { queue_length, workers_online, workers_idle, workers_busy },
+        queueSnapshot: {
+          queue_length,
+          queue_by_priority: queue_by_priority || null,
+          workers_online,
+          workers_idle,
+          workers_busy,
+        },
       }
     }
 

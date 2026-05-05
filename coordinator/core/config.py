@@ -21,6 +21,21 @@ class Settings(BaseSettings):
     redis_queue_key: str = "jobs:queue"
     redis_progress_channel: str = "jobs:progress"
 
+    @property
+    def priority_queue_keys(self) -> list[str]:
+        """Redis list keys ordered from highest to lowest priority."""
+        return [
+            f"{self.redis_queue_key}:high",
+            f"{self.redis_queue_key}:normal",
+            f"{self.redis_queue_key}:low",
+        ]
+
+    def queue_key_for_priority(self, priority: str) -> str:
+        """Return the Redis list key for a given priority label."""
+        if priority not in ("high", "normal", "low"):
+            priority = "normal"
+        return f"{self.redis_queue_key}:{priority}"
+
     # Application
     log_level: str = "info"
     debug: bool = False

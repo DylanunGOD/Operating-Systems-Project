@@ -1,7 +1,9 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Set
+from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
@@ -9,7 +11,7 @@ from sqlalchemy import func, select
 from core.config import get_settings
 from core.database import async_session_maker
 from core.redis_client import RedisClient
-from models.job import Worker
+from models.job import Job, JobStatus, Worker
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,95 @@ def _normalize_worker_event(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return out
 
 
+def _coerce_job_id(raw: Any) -> Optional[UUID]:
+    if raw is None:
+        return None
+    if isinstance(raw, UUID):
+        return raw
+    try:
+        return UUID(str(raw))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+async def _persist_event_to_db(raw: Dict[str, Any]) -> None:
+    """Apply a worker-side event to the corresponding ``jobs`` row.
+
+    The worker only publishes pub/sub messages; without this step the row
+    stays at ``queued`` forever and the dashboard's REST refresh overwrites
+    the live WebSocket state with stale data, making jobs that actually
+    completed look unfinished or failed.
+    """
+    job_id = _coerce_job_id(raw.get("job_id"))
+    if job_id is None:
+        return
+
+    event_type = raw.get("event")
+    if event_type not in (
+        "job_started",
+        "job_progress",
+        "job_completed",
+        "job_failed",
+    ):
+        return
+
+    try:
+        async with async_session_maker() as session:
+            result = await session.execute(select(Job).where(Job.id == job_id))
+            job = result.scalar_one_or_none()
+            if job is None:
+                return
+
+            now = datetime.now(timezone.utc)
+            worker_id = raw.get("worker_id")
+            if worker_id and not job.worker_id:
+                job.worker_id = worker_id
+            elif worker_id:
+                job.worker_id = worker_id
+
+            if event_type == "job_started":
+                job.status = JobStatus.processing
+                if job.started_at is None:
+                    job.started_at = now
+                if job.progress is None:
+                    job.progress = 0
+
+            elif event_type == "job_progress":
+                # Keep an active job marked as processing even if the start
+                # event was lost.
+                if job.status not in (JobStatus.completed, JobStatus.failed):
+                    job.status = JobStatus.processing
+                progress_raw = raw.get("progress")
+                try:
+                    progress_int = int(progress_raw)
+                    job.progress = max(0, min(100, progress_int))
+                except (TypeError, ValueError):
+                    pass
+
+            elif event_type == "job_completed":
+                job.status = JobStatus.completed
+                job.progress = 100
+                job.completed_at = now
+                job.error_msg = None
+                output_path = raw.get("output_path")
+                if output_path:
+                    job.output_path = output_path
+                metadata = raw.get("result_metadata")
+                if isinstance(metadata, dict):
+                    job.result_metadata = metadata
+
+            elif event_type == "job_failed":
+                job.status = JobStatus.failed
+                job.completed_at = now
+                err = raw.get("error_msg") or raw.get("error")
+                if err:
+                    job.error_msg = str(err)[:1000]
+
+            await session.commit()
+    except Exception as exc:
+        logger.warning("DB persist for %s/%s failed: %s", event_type, job_id, exc)
+
+
 async def _pubsub_listener() -> None:
     """Subscribe once to the worker progress channel and fan out to clients."""
     channel_name = settings.redis_progress_channel
@@ -112,6 +203,9 @@ async def _pubsub_listener() -> None:
                     logger.warning("Invalid pubsub payload dropped: %s", exc)
                     continue
 
+                # Persist first so the next REST hydrate can't undo the WS
+                # state, then forward to dashboard clients.
+                await _persist_event_to_db(parsed)
                 normalized = _normalize_worker_event(parsed)
                 if normalized is None:
                     continue
@@ -135,12 +229,17 @@ async def _pubsub_listener() -> None:
 
 
 async def _build_queue_snapshot() -> Dict[str, Any]:
-    try:
-        queue_length = RedisClient.get_async_connection().llen(settings.redis_queue_key)
-        if asyncio.iscoroutine(queue_length):
-            queue_length = await queue_length
-    except Exception:
-        queue_length = 0
+    redis_async = RedisClient.get_async_connection()
+    queue_by_priority: Dict[str, int] = {"high": 0, "normal": 0, "low": 0}
+    for level in queue_by_priority:
+        try:
+            value = redis_async.llen(f"{settings.redis_queue_key}:{level}")
+            if asyncio.iscoroutine(value):
+                value = await value
+            queue_by_priority[level] = int(value or 0)
+        except Exception:
+            queue_by_priority[level] = 0
+    queue_length = sum(queue_by_priority.values())
 
     workers_total = 0
     workers_idle = 0
@@ -159,6 +258,7 @@ async def _build_queue_snapshot() -> Dict[str, Any]:
     return {
         "type": "queue_snapshot",
         "queue_length": int(queue_length or 0),
+        "queue_by_priority": queue_by_priority,
         "workers_online": int(workers_total),
         "workers_idle": int(workers_idle),
         "workers_busy": int(workers_busy),

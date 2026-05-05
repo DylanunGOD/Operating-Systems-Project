@@ -22,7 +22,8 @@ import httpx
 # ---------------------------------------------------------------------------
 
 VIDEO_EXTENSIONS = {".mov", ".mp4", ".mkv", ".avi", ".webm"}
-AUDIO_EXTENSIONS = {".mp3", ".wav"}
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 def discover_files(directory: str, job_type: str) -> list[Path]:
@@ -35,6 +36,10 @@ def discover_files(directory: str, job_type: str) -> list[Path]:
         extensions = VIDEO_EXTENSIONS
     elif job_type == "extract_audio":
         extensions = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
+    elif job_type == "extract_metadata":
+        extensions = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
+    elif job_type == "classify_output":
+        extensions = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS | IMAGE_EXTENSIONS
     else:
         extensions = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
@@ -55,15 +60,22 @@ async def submit_one(
     input_path: str,
     output_dir: str,
     params: dict,
+    priority: str = "normal",
 ) -> tuple[bool, Optional[str]]:
     """Submit a single job. Returns (success, job_id_or_error_msg)."""
     filename = Path(input_path).name
-    output_path = str(Path(output_dir) / filename)
+    payload_params = dict(params)
+    if output_dir and "output_path" not in payload_params:
+        # Stable, predictable output filename — easier for the user to find
+        # the artefact on disk. Re-running the same lot is safe because the
+        # worker now always passes ``-y`` to ffmpeg.
+        payload_params["output_path"] = str(Path(output_dir) / filename)
 
     payload = {
         "type": job_type,
         "input_path": input_path,
-        "params": {**params, "output_path": output_path},
+        "priority": priority,
+        "params": payload_params,
     }
 
     try:
@@ -84,6 +96,7 @@ async def submit_batch(
     params: dict,
     concurrency: int,
     show_progress: bool,
+    priority: str = "normal",
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """Submit all files with bounded concurrency.
 
@@ -98,7 +111,13 @@ async def submit_batch(
     async def bounded(file: Path) -> None:
         async with sem:
             ok, msg = await submit_one(
-                client, coordinator, job_type, str(file), output_dir, params
+                client,
+                coordinator,
+                job_type,
+                str(file),
+                output_dir,
+                params,
+                priority=priority,
             )
             if ok:
                 succeeded.append(msg or "")
@@ -140,9 +159,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--type",
         required=True,
         dest="job_type",
-        choices=["convert_video", "extract_audio", "thumbnail"],
+        choices=[
+            "convert_video",
+            "extract_audio",
+            "thumbnail",
+            "extract_metadata",
+            "classify_output",
+        ],
         metavar="TYPE",
-        help="Job type: convert_video | extract_audio | thumbnail",
+        help=(
+            "Job type: convert_video | extract_audio | thumbnail | "
+            "extract_metadata | classify_output"
+        ),
+    )
+    parser.add_argument(
+        "--priority",
+        default="normal",
+        choices=["high", "normal", "low"],
+        metavar="LEVEL",
+        help="Priority level applied to every submitted job (default: normal).",
     )
     parser.add_argument(
         "--coordinator",
@@ -213,6 +248,7 @@ def main() -> None:
             params=params,
             concurrency=args.concurrency,
             show_progress=not args.no_progress,
+            priority=args.priority,
         )
     )
 

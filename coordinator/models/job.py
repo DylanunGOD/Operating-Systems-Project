@@ -12,6 +12,8 @@ class JobType(str, enum.Enum):
     convert_video = "convert_video"
     extract_audio = "extract_audio"
     thumbnail = "thumbnail"
+    extract_metadata = "extract_metadata"
+    classify_output = "classify_output"
 
 
 class JobStatus(str, enum.Enum):
@@ -22,6 +24,14 @@ class JobStatus(str, enum.Enum):
     processing = "processing"
     completed = "completed"
     failed = "failed"
+
+
+class JobPriority(str, enum.Enum):
+    """Job priority levels — controls which Redis list a job is enqueued to."""
+
+    high = "high"
+    normal = "normal"
+    low = "low"
 
 
 class Job(Base):
@@ -36,9 +46,11 @@ class Job(Base):
         nullable=False,
         default=JobStatus.pending,
     )
+    priority = Column(String, nullable=False, default=JobPriority.normal.value)
     input_path = Column(String, nullable=False)
     output_path = Column(String)
     params = Column(JSON, default={})
+    result_metadata = Column(JSON, default={})
     worker_id = Column(String)
     progress = Column(Integer, default=0)
     error_msg = Column(Text)

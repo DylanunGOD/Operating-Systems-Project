@@ -63,10 +63,7 @@ Expected response:
 {"status": "healthy", "service": "coordinator"}
 ```
 
-```bash
-# List available chaos scenarios
-curl http://localhost:8000/chaos/scenarios
-```
+
 
 Open the following URLs in a browser:
 

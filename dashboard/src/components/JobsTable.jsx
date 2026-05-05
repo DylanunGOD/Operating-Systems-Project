@@ -23,6 +23,16 @@ export function JobsTable() {
     }`
   }
 
+  const getPriorityBadgeClass = (priority) => {
+    return `badge badge-${
+      priority === 'high'
+        ? 'danger'
+        : priority === 'low'
+        ? 'secondary'
+        : 'primary'
+    }`
+  }
+
   const formatDate = (dateString) => {
     if (!dateString) return '-'
     const d = new Date(dateString)
@@ -67,6 +77,7 @@ export function JobsTable() {
               <tr>
                 <th>ID</th>
                 <th>Tipo</th>
+                <th>Prioridad</th>
                 <th>Estado</th>
                 <th>Progreso</th>
                 <th>Worker</th>
@@ -78,6 +89,11 @@ export function JobsTable() {
                 <tr key={job.id}>
                   <td className={styles.jobId}>{formatJobId(job.id)}</td>
                   <td>{job.type || '-'}</td>
+                  <td>
+                    <span className={getPriorityBadgeClass(job.priority)}>
+                      {job.priority || 'normal'}
+                    </span>
+                  </td>
                   <td>
                     <span className={getStatusBadgeClass(job.status)}>
                       {job.status || '-'}

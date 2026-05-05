@@ -119,11 +119,14 @@ def process_job(job_data: str) -> bool:
 
 
 def main():
-    """Main worker loop - consumes jobs from Redis queue"""
+    """Main worker loop - consumes jobs from Redis priority queues."""
     global _jobs_done, _current_status, _current_job_id
 
+    priority_keys = settings.priority_queue_keys
+    legacy_key = settings.redis_queue_key
+
     logger.info(f"Worker {settings.worker_id} started")
-    logger.info(f"Listening to queue: {settings.redis_queue_key}")
+    logger.info("Listening to priority queues: %s", priority_keys)
 
     # Start Prometheus metrics HTTP server
     logger.info(f"Starting metrics server on port {settings.metrics_port}")
@@ -137,15 +140,18 @@ def main():
     hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     hb_thread.start()
 
+    # BLPOP with multiple keys honors strict priority: Redis returns from the
+    # first non-empty key in the list, so we get [high, normal, low] dispatch
+    # in a single round trip. ``legacy_key`` is also polled so jobs pushed
+    # without a priority suffix (older clients) still get consumed.
+    blpop_keys = [*priority_keys, legacy_key]
+
     while running:
         try:
             # Update heartbeat
             worker_heartbeat_timestamp.set(time.time())
 
-            job_data = redis_client.blpop(
-                settings.redis_queue_key,
-                timeout=5,
-            )
+            job_data = redis_client.blpop(blpop_keys, timeout=5)
 
             if job_data:
                 # Mark worker as active
@@ -159,6 +165,7 @@ def main():
                 send_heartbeat()
 
                 queue_name, job_json = job_data
+                logger.info("Picked job from %s", queue_name)
                 success = process_job(job_json)
 
                 if success:

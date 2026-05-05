@@ -63,10 +63,13 @@ async def get_metrics(
     redis=Depends(get_redis),
 ):
     """Get Prometheus metrics in text format"""
-    try:
-        queue_length = redis.llen(settings.redis_queue_key)
-    except Exception:
-        queue_length = 0
+    queue_keys = [settings.redis_queue_key, *settings.priority_queue_keys]
+    queue_length = 0
+    for key in queue_keys:
+        try:
+            queue_length += int(redis.llen(key) or 0)
+        except Exception:
+            continue
 
     coordinator_queue_depth.set(queue_length)
 
