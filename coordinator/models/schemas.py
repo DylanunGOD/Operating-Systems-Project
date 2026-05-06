@@ -11,6 +11,8 @@ class JobType(str, Enum):
     convert_video = "convert_video"
     extract_audio = "extract_audio"
     thumbnail = "thumbnail"
+    extract_metadata = "extract_metadata"
+    classify_output = "classify_output"
 
 
 class JobStatus(str, Enum):
@@ -23,11 +25,20 @@ class JobStatus(str, Enum):
     failed = "failed"
 
 
+class JobPriority(str, Enum):
+    """Job priority levels."""
+
+    high = "high"
+    normal = "normal"
+    low = "low"
+
+
 class JobCreate(BaseModel):
     """Request schema for creating a new job"""
 
     type: JobType
     input_path: str
+    priority: JobPriority = JobPriority.normal
     params: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
@@ -38,6 +49,8 @@ class JobUpdate(BaseModel):
     progress: Optional[int] = None
     worker_id: Optional[str] = None
     error_msg: Optional[str] = None
+    priority: Optional[JobPriority] = None
+    result_metadata: Optional[Dict[str, Any]] = None
 
 
 class JobResponse(BaseModel):
@@ -46,9 +59,11 @@ class JobResponse(BaseModel):
     id: UUID
     type: JobType
     status: JobStatus
+    priority: JobPriority = JobPriority.normal
     input_path: str
     output_path: Optional[str] = None
     params: Dict[str, Any]
+    result_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     worker_id: Optional[str] = None
     progress: int
     error_msg: Optional[str] = None
@@ -87,6 +102,23 @@ class WorkerListResponse(BaseModel):
     """Response schema for worker list"""
 
     workers: list[WorkerResponse]
+
+
+class WorkerRegisterRequest(BaseModel):
+    """Request schema for worker registration"""
+
+    id: str
+    status: str = "idle"
+
+
+class WorkerHeartbeatRequest(BaseModel):
+    """Request schema for worker heartbeat"""
+
+    status: Optional[str] = None
+    current_job: Optional[UUID] = None
+    cpu_percent: Optional[int] = None
+    mem_percent: Optional[int] = None
+    jobs_done: Optional[int] = None
 
 
 class MetricsResponse(BaseModel):

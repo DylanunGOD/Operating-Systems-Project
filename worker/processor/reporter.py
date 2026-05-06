@@ -1,6 +1,8 @@
 import json
 import logging
 from datetime import datetime
+from typing import Any, Dict, Optional
+
 from redis import Redis
 
 logger = logging.getLogger(__name__)
@@ -64,15 +66,22 @@ class ProgressReporter:
         job_id: str,
         worker_id: str,
         output_path: str,
+        result_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Report that job processing completed successfully"""
-        message = {
+        """Report that job processing completed successfully.
+
+        ``result_metadata`` is forwarded to the coordinator so it can be
+        persisted on the job row (used by extract_metadata / classify_output).
+        """
+        message: Dict[str, Any] = {
             "event": "job_completed",
             "job_id": job_id,
             "worker_id": worker_id,
             "output_path": output_path,
             "timestamp": datetime.utcnow().isoformat(),
         }
+        if result_metadata is not None:
+            message["result_metadata"] = result_metadata
 
         try:
             self.redis.publish(

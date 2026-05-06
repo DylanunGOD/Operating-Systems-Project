@@ -229,6 +229,97 @@ def test_process_extract_audio_failure(
     assert "FFmpeg audio extraction failed" in args[0][2]
 
 
+# process_extract_metadata
+def test_process_extract_metadata_success_writes_sidecar(
+    task_processor, mock_ffmpeg_handler, mock_reporter, tmp_path
+):
+    """extract_metadata writes ffprobe output to a JSON sidecar and reports it."""
+    mock_ffmpeg_handler.probe_metadata.return_value = {
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration_seconds": 5.0,
+        "video_codec": "h264",
+    }
+
+    output_path = tmp_path / "meta.json"
+    result = task_processor.process_extract_metadata(
+        job_id="job-em-1",
+        worker_id="worker-1",
+        input_path="/input/video.mp4",
+        output_path=str(output_path),
+        params={},
+    )
+
+    assert result is True
+    assert output_path.exists()
+    contents = output_path.read_text()
+    assert "duration_seconds" in contents
+    mock_reporter.report_completed.assert_called_once()
+    args, kwargs = mock_reporter.report_completed.call_args
+    assert kwargs.get("result_metadata", {}).get("video_codec") == "h264"
+
+
+def test_process_extract_metadata_failure_reports_error(
+    task_processor, mock_ffmpeg_handler, mock_reporter, tmp_path
+):
+    """extract_metadata: ffprobe error path reports failure."""
+    mock_ffmpeg_handler.probe_metadata.return_value = {
+        "error": "ffprobe_failed",
+        "stderr": "no such file",
+    }
+
+    result = task_processor.process_extract_metadata(
+        job_id="job-em-2",
+        worker_id="worker-1",
+        input_path="/missing.mp4",
+        output_path=str(tmp_path / "meta.json"),
+        params={},
+    )
+
+    assert result is False
+    mock_reporter.report_failed.assert_called_once()
+
+
+# process_classify_output
+def test_process_classify_output_organises_into_buckets(
+    task_processor, mock_ffmpeg_handler, mock_reporter, tmp_path
+):
+    """classify_output copies the source into format and duration sub-folders."""
+    src = tmp_path / "song.mp3"
+    src.write_bytes(b"\x00" * 16)
+    mock_ffmpeg_handler.probe_metadata.return_value = {"duration_seconds": 12.0}
+
+    output_path = tmp_path / "out" / "manifest.json"
+    result = task_processor.process_classify_output(
+        job_id="job-co-1",
+        worker_id="worker-1",
+        input_path=str(src),
+        output_path=str(output_path),
+        params={},
+    )
+
+    assert result is True
+    assert output_path.exists()
+    by_format = tmp_path / "out" / "by_format" / "audio" / "mp3" / "song.mp3"
+    by_duration = tmp_path / "out" / "by_duration" / "short" / "song.mp3"
+    assert by_format.exists()
+    assert by_duration.exists()
+
+
+def test_process_classify_output_missing_source_fails(
+    task_processor, mock_ffmpeg_handler, mock_reporter, tmp_path
+):
+    """classify_output reports failure when source file is missing."""
+    result = task_processor.process_classify_output(
+        job_id="job-co-2",
+        worker_id="worker-1",
+        input_path=str(tmp_path / "ghost.mp4"),
+        output_path=str(tmp_path / "out.json"),
+        params={},
+    )
+    assert result is False
+    mock_reporter.report_failed.assert_called_once()
+
+
 # process_thumbnail
 def test_process_thumbnail_success_sets_progress(
     task_processor, mock_ffmpeg_handler, mock_reporter

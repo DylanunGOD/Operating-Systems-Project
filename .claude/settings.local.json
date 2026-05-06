@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -nA 15 \"grafana:\" docker-compose.yml)",
+      "Bash(ffmpeg -version)",
+      "Bash(ffprobe -version)"
+    ]
+  }
+}

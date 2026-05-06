@@ -34,7 +34,7 @@ async def test_create_job_returns_201_like_response(async_client):
     assert r.status_code == 200
     data = r.json()
     assert data["type"] == "thumbnail"
-    assert data["input_path"] == "/data/video.mp4"
+    assert data["input_path"] == "/media/input/video.mp4"
     assert "id" in data
 
 
@@ -46,20 +46,35 @@ async def test_create_job_status_is_queued(async_client):
 
 
 async def test_create_job_enqueues_to_redis(async_client, redis_mock):
-    """POST /jobs pushes one item to the Redis queue."""
-    queue_key = "jobs:queue"
+    """POST /jobs pushes one item to the priority-resolved Redis list.
+
+    Default priority is ``normal`` so the payload lands on ``jobs:queue:normal``.
+    """
+    queue_key = "jobs:queue:normal"
     before = redis_mock.llen(queue_key)
     await async_client.post("/jobs", json=JOB_PAYLOAD)
     assert redis_mock.llen(queue_key) == before + 1
 
 
+async def test_create_job_high_priority_routes_to_high_queue(async_client, redis_mock):
+    """POST /jobs with priority=high lands on ``jobs:queue:high``."""
+    payload = {**JOB_PAYLOAD, "priority": "high"}
+    before = redis_mock.llen("jobs:queue:high")
+    r = await async_client.post("/jobs", json=payload)
+    assert r.status_code == 200
+    assert redis_mock.llen("jobs:queue:high") == before + 1
+    # nothing leaked into the normal lane
+    assert redis_mock.llen("jobs:queue:normal") == 0
+
+
 async def test_create_job_redis_payload_shape(async_client, redis_mock):
     """Item pushed to Redis contains required keys with correct values."""
     await async_client.post("/jobs", json=JOB_PAYLOAD)
-    raw = redis_mock.lrange("jobs:queue", -1, -1)[0]
+    raw = redis_mock.lrange("jobs:queue:normal", -1, -1)[0]
     payload = json.loads(raw)
     assert payload["type"] == "thumbnail"
-    assert payload["input_path"] == "/data/video.mp4"
+    assert payload["input_path"] == "/media/input/video.mp4"
+    assert payload["priority"] == "normal"
     assert "id" in payload
 
 
@@ -152,6 +167,51 @@ async def test_get_job_invalid_uuid(async_client):
     """GET /jobs/not-a-uuid returns 422 unprocessable entity."""
     r = await async_client.get("/jobs/not-a-uuid")
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# 3b. GET /jobs/{id}/result — download endpoint
+# ---------------------------------------------------------------------------
+
+
+async def test_get_job_result_404_for_unknown_id(async_client):
+    """GET /jobs/{id}/result returns 404 if the job doesn't exist."""
+    r = await async_client.get(f"/jobs/{uuid.uuid4()}/result")
+    assert r.status_code == 404
+
+
+async def test_get_job_result_409_when_not_completed(async_client, sample_job_factory):
+    """GET /jobs/{id}/result returns 409 (conflict) for non-completed jobs."""
+    job = await sample_job_factory(status="processing")
+    r = await async_client.get(f"/jobs/{job.id}/result")
+    assert r.status_code == 409
+
+
+async def test_get_job_result_410_when_file_missing(
+    async_client, sample_job_factory, db_session
+):
+    """GET /jobs/{id}/result returns 410 if the output file disappeared."""
+    job = await sample_job_factory(status="completed")
+    job.output_path = "/tmp/this/path/does-not-exist.mp4"
+    await db_session.commit()
+    r = await async_client.get(f"/jobs/{job.id}/result")
+    assert r.status_code == 410
+
+
+async def test_get_job_result_streams_existing_file(
+    async_client, sample_job_factory, db_session, tmp_path
+):
+    """GET /jobs/{id}/result streams the output file when it exists."""
+    artefact = tmp_path / "result.bin"
+    artefact.write_bytes(b"hello world")
+
+    job = await sample_job_factory(status="completed")
+    job.output_path = str(artefact)
+    await db_session.commit()
+
+    r = await async_client.get(f"/jobs/{job.id}/result")
+    assert r.status_code == 200
+    assert r.content == b"hello world"
 
 
 # ---------------------------------------------------------------------------
@@ -379,8 +439,11 @@ async def test_metrics_workers_online_idle_busy(async_client, db_session):
 # ---------------------------------------------------------------------------
 
 
-async def test_scheduler_enqueue_pushes_to_correct_key():
-    """JobScheduler.enqueue_job pushes JSON to the configured Redis list key."""
+async def test_scheduler_enqueue_pushes_to_priority_key():
+    """JobScheduler.enqueue_job routes to ``<base>:<priority>``.
+
+    Default priority is ``normal`` so the item lands on ``custom:queue:normal``.
+    """
     from core.database import Base
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
@@ -404,13 +467,47 @@ async def test_scheduler_enqueue_pushes_to_correct_key():
         result = await scheduler.enqueue_job(session, job)
 
     assert result is True
-    assert r.llen("custom:queue") == 1
+    assert r.llen("custom:queue:normal") == 1
+    assert r.llen("custom:queue") == 0  # base key untouched
 
-    payload = json.loads(r.lrange("custom:queue", 0, -1)[0])
+    payload = json.loads(r.lrange("custom:queue:normal", 0, -1)[0])
     assert payload["type"] == "convert_video"
     assert payload["input_path"] == "/src/movie.mkv"
     assert payload["params"] == {"codec": "h264"}
+    assert payload["priority"] == "normal"
     assert "id" in payload
+
+    await engine.dispose()
+
+
+async def test_scheduler_enqueue_high_priority_routes_to_high_queue():
+    """priority=high goes to ``<base>:high`` and nothing else."""
+    from core.database import Base
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    r = fakeredis.FakeRedis(decode_responses=True)
+    scheduler = JobScheduler(r, "jobs:queue")
+
+    async with maker() as session:
+        job = Job(
+            id=uuid.uuid4(),
+            type=JobType.convert_video,
+            input_path="/x.mp4",
+            params={},
+            priority="high",
+        )
+        session.add(job)
+        await session.flush()
+        await scheduler.enqueue_job(session, job)
+
+    assert r.llen("jobs:queue:high") == 1
+    assert r.llen("jobs:queue:normal") == 0
+    assert r.llen("jobs:queue:low") == 0
 
     await engine.dispose()
 
@@ -444,7 +541,7 @@ async def test_scheduler_enqueue_sets_status_queued():
 
 
 async def test_scheduler_enqueue_multiple_jobs():
-    """enqueue_job called twice pushes two items in order."""
+    """enqueue_job called three times pushes all three to the normal lane."""
     from core.database import Base
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
@@ -468,7 +565,7 @@ async def test_scheduler_enqueue_multiple_jobs():
             await session.flush()
             await scheduler.enqueue_job(session, job)
 
-    assert r.llen("jobs:queue") == 3
+    assert r.llen("jobs:queue:normal") == 3
     await engine.dispose()
 
 

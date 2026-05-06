@@ -43,9 +43,21 @@ export const workersAPI = {
     api.get(`/workers/${workerId}`),
 }
 
-export const metricsAPI = {
-  getMetrics: () =>
-    api.get('/metrics'),
+export const chaosAPI = {
+  listScenarios: () =>
+    api.get('/chaos/scenarios'),
+
+  listRuns: () =>
+    api.get('/chaos/runs'),
+
+  getRun: (runId) =>
+    api.get(`/chaos/runs/${runId}`),
+
+  startRun: (scenarioId) =>
+    api.post('/chaos/runs', { scenario_id: scenarioId }),
+
+  cancelRun: (runId) =>
+    api.delete(`/chaos/runs/${runId}`),
 }
 
 export default api

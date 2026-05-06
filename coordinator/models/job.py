@@ -12,6 +12,8 @@ class JobType(str, enum.Enum):
     convert_video = "convert_video"
     extract_audio = "extract_audio"
     thumbnail = "thumbnail"
+    extract_metadata = "extract_metadata"
+    classify_output = "classify_output"
 
 
 class JobStatus(str, enum.Enum):
@@ -24,17 +26,31 @@ class JobStatus(str, enum.Enum):
     failed = "failed"
 
 
+class JobPriority(str, enum.Enum):
+    """Job priority levels — controls which Redis list a job is enqueued to."""
+
+    high = "high"
+    normal = "normal"
+    low = "low"
+
+
 class Job(Base):
     """Job model for multimedia processing tasks"""
 
     __tablename__ = "jobs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    type = Column(Enum(JobType), nullable=False)
-    status = Column(Enum(JobStatus), nullable=False, default=JobStatus.pending)
+    type = Column(Enum(JobType, name="job_type", create_type=False), nullable=False)
+    status = Column(
+        Enum(JobStatus, name="job_status", create_type=False),
+        nullable=False,
+        default=JobStatus.pending,
+    )
+    priority = Column(String, nullable=False, default=JobPriority.normal.value)
     input_path = Column(String, nullable=False)
     output_path = Column(String)
     params = Column(JSON, default={})
+    result_metadata = Column(JSON, default={})
     worker_id = Column(String)
     progress = Column(Integer, default=0)
     error_msg = Column(Text)

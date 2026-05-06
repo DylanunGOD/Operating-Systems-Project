@@ -34,6 +34,7 @@ htmlcov/
 .env.local
 .env.*.local
 
+
 # IDE
 .vscode/
 .idea/
@@ -72,3 +73,4 @@ build/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+BRIEF_IAN.md
