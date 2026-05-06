@@ -43,6 +43,17 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        # The repository ships a single ``.env`` file shared across services
+        # (coordinator, worker, dashboard, observability stack), so any one
+        # Settings class will see fields that belong to the other services
+        # — e.g. the worker's ``WORKER_*`` keys, Grafana credentials, Loki
+        # URL. Without ``extra='ignore'`` Pydantic V2 raises
+        # ``ValidationError: Extra inputs are not permitted`` on import as
+        # soon as ``.env`` exists. Tests that don't have a ``.env`` worked
+        # by accident; run pytest after a ``docker compose up`` and you'd
+        # get a hard crash. Ignoring unknown keys is the documented
+        # pattern for shared env files.
+        extra = "ignore"
 
     @property
     def database_url(self) -> str:

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import random
 import shutil
 import subprocess
@@ -40,7 +39,9 @@ class FileSpec:
     container: str  # extension without leading dot
     duration_seconds: int
     resolution: Optional[str]  # for video only
-    suggested_operation: str  # convert_video | extract_audio | thumbnail | extract_metadata
+    suggested_operation: (
+        str  # convert_video | extract_audio | thumbnail | extract_metadata
+    )
     suggested_priority: str  # high | normal | low
     duration_bucket: str  # short | medium | long
 
@@ -322,9 +323,7 @@ def main() -> None:
                 else:
                     _generate_audio(spec, target)
                 size = target.stat().st_size
-                print(
-                    f"[{idx}/{total}] ok     {spec.filename} ({_format_size(size)})"
-                )
+                print(f"[{idx}/{total}] ok     {spec.filename} ({_format_size(size)})")
             except RuntimeError as exc:
                 print(f"[{idx}/{total}] FAIL   {spec.filename}: {exc}", file=sys.stderr)
 
@@ -361,8 +360,11 @@ def main() -> None:
     manifest = {
         "generated_with": "client/generate_test_files.py",
         "seed": args.seed,
-        "preset": args.preset if args.video_count is None and args.audio_count is None
-        else "custom",
+        "preset": (
+            args.preset
+            if args.video_count is None and args.audio_count is None
+            else "custom"
+        ),
         "totals": {
             "files": len(manifest_entries),
             "size_bytes": total_bytes,

@@ -26,7 +26,9 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 logger = logging.getLogger("auto_generator")
 
 
@@ -165,8 +167,12 @@ async def main_async(args: argparse.Namespace) -> int:
         logger.error("watch path is not a directory: %s", watch_dir)
         return 2
 
-    manifest_path = Path(args.manifest) if args.manifest else watch_dir / "manifest.json"
-    log_path = Path(args.processed_log) if args.processed_log else watch_dir / ".processed.log"
+    manifest_path = (
+        Path(args.manifest) if args.manifest else watch_dir / "manifest.json"
+    )
+    log_path = (
+        Path(args.processed_log) if args.processed_log else watch_dir / ".processed.log"
+    )
 
     manifest = _load_manifest(manifest_path if manifest_path.exists() else None)
     if manifest:

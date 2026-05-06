@@ -74,3 +74,9 @@ build/
 .dmypy.json
 dmypy.json
 BRIEF_IAN.md
+
+# Claude Code per-machine settings (local permissions, scheduled-task locks).
+# Anything that lives only on a single contributor's box belongs here so it
+# does not leak across machines via PRs.
+.claude/
+.tmp_loadtest/

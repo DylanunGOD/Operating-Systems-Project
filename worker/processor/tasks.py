@@ -245,12 +245,12 @@ class TaskProcessor:
 
             metadata = self.ffmpeg.probe_metadata(str(src))
             duration_bucket = _classify_by_duration(
-                metadata.get("duration_seconds")
-                if isinstance(metadata, dict)
-                else None
+                metadata.get("duration_seconds") if isinstance(metadata, dict) else None
             )
 
-            base_dir = Path(output_path).parent if output_path else Path("/media/output")
+            base_dir = (
+                Path(output_path).parent if output_path else Path("/media/output")
+            )
             move = bool(params.get("move", False))
 
             format_target = base_dir / "by_format" / family / (ext or "unknown")
@@ -278,9 +278,11 @@ class TaskProcessor:
                 "format_family": family,
                 "format_extension": ext,
                 "duration_bucket": duration_bucket,
-                "duration_seconds": metadata.get("duration_seconds")
-                if isinstance(metadata, dict)
-                else None,
+                "duration_seconds": (
+                    metadata.get("duration_seconds")
+                    if isinstance(metadata, dict)
+                    else None
+                ),
                 "placed_paths": placed_paths,
             }
             primary_path = placed_paths[0]

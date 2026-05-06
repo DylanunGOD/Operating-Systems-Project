@@ -55,8 +55,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # ``test_files`` is the host-side dataset produced by
+    # ``client/generate_test_files.py`` and is mounted read-only at
+    # ``/media/input`` so jobs created by the CLI (which sends paths like
+    # ``./test_files/foo.mp4``) resolve to a real file inside the container.
+    # Without this bind mount the named volume is empty and every job lands
+    # in ``failed`` status because ffmpeg cannot read the input.
     volumes:
-      - media_volume:/media
+      - ./test_files:/media/input:ro
+      - ./media_output:/media/output
     networks:
       - backend
       - frontend
@@ -76,7 +83,8 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - media_volume:/media
+      - ./test_files:/media/input:ro
+      - ./media_output:/media/output
     networks:
       - backend
 
@@ -95,7 +103,8 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - media_volume:/media
+      - ./test_files:/media/input:ro
+      - ./media_output:/media/output
     networks:
       - backend
 
@@ -114,7 +123,8 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - media_volume:/media
+      - ./test_files:/media/input:ro
+      - ./media_output:/media/output
     networks:
       - backend
 
@@ -196,7 +206,6 @@ services:
 volumes:
   pg_data:
   redis_data:
-  media_volume:
   prometheus_data:
   grafana_data:
 

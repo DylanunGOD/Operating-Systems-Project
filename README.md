@@ -60,7 +60,9 @@ using FastAPI, Redis, PostgreSQL, Docker, Prometheus, and Grafana.
 
 ## Quick Start
 
-**Prerequisites:** Docker Desktop 24+, Docker Compose v2, 8 GB RAM available.
+**Prerequisites:** Docker Desktop 24+, Docker Compose v2, 8 GB RAM available, and
+`ffmpeg` on the host PATH (used by `client/generate_test_files.py` to synthesize
+the dataset).
 
 ```bash
 # 1. Clone
@@ -70,9 +72,22 @@ cd Operating-Systems-Project
 # 2. Configure environment (defaults work for local dev)
 cp .env.example .env
 
-# 3. Build and start all services
+# 3. Generate a test dataset BEFORE the workers start.
+#    --preset small  ~30 files (fast smoke test)
+#    --preset full   ~420 files (the rubric calls for 400+; takes a few minutes to encode)
+python client/generate_test_files.py --preset small
+
+# 4. Build and start all services
 docker compose up -d --build
 ```
+
+How `./test_files/` reaches the workers: `docker-compose.yml` bind-mounts the
+host folder read-only at `/media/input` inside the coordinator and every
+worker, and the host folder `./media_output/` read-write at `/media/output`.
+The CLI sends host-side paths (e.g. `./test_files/clip_1.mp4`); the
+coordinator rewrites them to `/media/input/<basename>` so the worker can open
+the file directly. Without the bind mount the volume is empty and every job
+ends in `failed` — that was the root cause of the historic FAILED-status bug.
 
 Wait ~60 s for services to become healthy, then verify:
 
@@ -80,13 +95,19 @@ Wait ~60 s for services to become healthy, then verify:
 # Health check
 curl http://localhost:8000/health
 
-# Submit a test job
+# Submit a test job — pick any filename that exists in ./test_files/
 curl -X POST http://localhost:8000/jobs \
   -H "Content-Type: application/json" \
-  -d '{"type":"thumbnail","input_path":"/media/input/test.mp4","params":{}}'
+  -d '{"type":"thumbnail","input_path":"./test_files/clip_1.mp4","params":{}}'
 
-# List jobs
+# Or: batch-submit every clip in ./test_files/ via the CLI
+python client/submit_jobs.py --dir ./test_files --type thumbnail --concurrency 5
+
+# List jobs and inspect status
 curl http://localhost:8000/jobs
+
+# Download the result of a completed job (returns 409 if not yet completed)
+curl -OJ http://localhost:8000/jobs/<job_id>/result
 ```
 
 | URL                          | What                          |
