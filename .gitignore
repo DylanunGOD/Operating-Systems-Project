@@ -79,3 +79,4 @@ BRIEF_IAN.md
 # Anything that lives only on a single contributor's box belongs here so it
 # does not leak across machines via PRs.
 .claude/
+.tmp_loadtest/
