@@ -6,9 +6,11 @@ Run with:
 """
 
 import os
+import shutil
 import subprocess
 import time
 from datetime import datetime, timezone
+from typing import Optional
 
 import httpx
 import pytest
@@ -32,10 +34,20 @@ def coordinator_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def tmp_media_dir(tmp_path_factory) -> str:
-    """Path to a temporary media directory for test video files."""
-    media_dir = tmp_path_factory.mktemp("test_media")
-    return str(media_dir)
+def media_input_dir() -> str:
+    """Host-side directory bind-mounted at ``/media/input`` inside coordinator
+    and workers.
+
+    The job submission path the coordinator normalises is the *basename* of
+    whatever the client sent, looked up under ``/media/input``. Writing
+    fixture videos here (not into ``tmp_path``) is the only way the worker
+    container can actually read them, so this is what catches the FAILED
+    regression: if the bind mount is missing the job ends in ``failed`` and
+    the assertion below trips.
+    """
+    media_dir = os.environ.get("INTEGRATION_MEDIA_DIR", "./test_files")
+    os.makedirs(media_dir, exist_ok=True)
+    return media_dir
 
 
 # ---------------------------------------------------------------------------
@@ -55,11 +67,27 @@ def test_coordinator_health(coordinator_url: str) -> None:
 
 @pytest.mark.integration
 def test_submit_thumbnail_job_end_to_end(
-    coordinator_url: str, tmp_media_dir: str
+    coordinator_url: str, media_input_dir: str
 ) -> None:
-    """Submit a thumbnail job and poll until completed (timeout 60s)."""
-    # Generate a 1-second test video using ffmpeg
-    test_video = os.path.join(tmp_media_dir, "test_input.mp4")
+    """Submit a thumbnail job and assert it lands on ``completed`` (not
+    ``failed``).
+
+    This is also the regression test for the bind-mount bug: before the fix
+    in docker-compose.yml the workers received ``/media/input/<basename>``
+    paths but the named volume was empty, so every job ended in ``failed``.
+    The fixture now writes the source clip into the bind-mounted host
+    directory so the worker can actually read it.
+    """
+    test_video_host = os.path.join(media_input_dir, "regression_e2e_input.mp4")
+
+    # Generate a 1-second clip with the host's ffmpeg. The test is meant to
+    # exercise the worker pipeline, not the host's encoder, so when local
+    # ffmpeg is missing we skip — falling back to a synthetic path would
+    # quietly turn this into a no-op (the old behaviour) and hide the very
+    # bug this test is here to catch.
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("local ffmpeg is required to produce the fixture clip")
+
     result = subprocess.run(
         [
             "ffmpeg",
@@ -72,42 +100,52 @@ def test_submit_thumbnail_job_end_to_end(
             "libx264",
             "-pix_fmt",
             "yuv420p",
-            test_video,
+            "-loglevel",
+            "error",
+            test_video_host,
         ],
         capture_output=True,
         timeout=30,
     )
-    # If local ffmpeg is unavailable, use a synthetic path and rely on the worker
     if result.returncode != 0:
-        test_video = "/media/test_input.mp4"
-
-    with httpx.Client(base_url=coordinator_url, timeout=15.0) as client:
-        # Submit the job
-        resp = client.post(
-            "/jobs",
-            json={"type": "thumbnail", "input_path": test_video},
+        pytest.fail(
+            f"ffmpeg failed to produce the fixture clip "
+            f"(exit={result.returncode}, stderr={result.stderr[-200:]!r})"
         )
-        assert resp.status_code == 200, f"Job creation failed: {resp.text}"
-        job_id = resp.json()["id"]
 
-        # Poll until completed or timeout
-        deadline = time.monotonic() + 60.0
-        job_data = None
-        while time.monotonic() < deadline:
-            poll = client.get(f"/jobs/{job_id}")
-            assert poll.status_code == 200
-            job_data = poll.json()
-            if job_data["status"] in ("completed", "failed"):
-                break
-            time.sleep(2)
+    job_id: Optional[str] = None
+    try:
+        with httpx.Client(base_url=coordinator_url, timeout=15.0) as client:
+            resp = client.post(
+                "/jobs",
+                json={"type": "thumbnail", "input_path": test_video_host},
+            )
+            assert resp.status_code == 200, f"Job creation failed: {resp.text}"
+            job_id = resp.json()["id"]
 
-    assert job_data is not None, "No job data received"
-    assert job_data["status"] == "completed", (
-        f"Job did not complete: status={job_data['status']}, "
-        f"error={job_data.get('error_msg')}"
-    )
-    assert job_data["progress"] == 100
-    assert job_data.get("output_path") is not None
+            deadline = time.monotonic() + 60.0
+            job_data = None
+            while time.monotonic() < deadline:
+                poll = client.get(f"/jobs/{job_id}")
+                assert poll.status_code == 200
+                job_data = poll.json()
+                if job_data["status"] in ("completed", "failed"):
+                    break
+                time.sleep(2)
+
+        assert job_data is not None, "No job data received"
+        assert job_data["status"] == "completed", (
+            f"Job did not complete: status={job_data['status']}, "
+            f"error={job_data.get('error_msg')}"
+        )
+        assert job_data["progress"] == 100
+        assert job_data.get("output_path") is not None
+    finally:
+        # Best-effort cleanup of the host-side fixture file.
+        try:
+            os.remove(test_video_host)
+        except OSError:
+            pass
 
 
 @pytest.mark.integration
