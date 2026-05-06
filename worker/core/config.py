@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        # See coordinator/core/config.py for the rationale; the repository
+        # uses one shared ``.env`` across services and Pydantic V2 rejects
+        # any field this Settings class does not declare unless we say so.
+        extra = "ignore"
 
 
 def get_settings() -> Settings:
